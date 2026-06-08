@@ -15,13 +15,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# [수정사항] 1번 요건: 뉴스 헤드라인 폰트 크기를 카테고리 태그(11px)와 동일하게 축소 조정
-# [수정사항] 3번 요건: 수입 추이 테이블 폰트와 스타일을 거시지표 테이블 스타일과 일치시키는 디자인 정의
+# UI 및 컬러 마크업 규격 CSS 정의
 st.markdown("""
     <style>
     .reportview-container, .main { background-color: #f1f5f9; }
     
-    /* 1번 요건: 메인 타이틀 안의 날짜용 얇은 폰트 스타일 */
     .title-thin { font-weight: 300; font-size: 18px; color: #475569; margin-left: 10px; }
     .report-title { font-size: 26px; font-weight: bold; color: #0f172a; border-bottom: 3px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; }
     .section-title { font-size: 16px; font-weight: bold; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px; margin-top: 5px; margin-bottom: 15px; }
@@ -48,18 +46,17 @@ st.markdown("""
     .color-down { color: #2563eb; font-weight: bold; }
     .color-flat { color: #64748b; font-weight: bold; }
     
-    /* 1번 요건: 주요 뉴스 헤드라인 폰트 크기를 태그와 동일한 11px로 매핑 */
     .news-tag { background-color: #f1f5f9; color: #475569; font-weight: bold; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-right: 6px; display: inline-block; }
     .news-item { margin-bottom: 10px; font-size: 11px; list-style-type: none; color: #1e293b; }
     
-    /* 2, 3번 요건: 거시지표 및 수입추이 테이블 통합 커스텀 CSS (Malgun Gothic 계열 명시) */
+    /* 테이블 통합 커스텀 CSS (맑은 고딕 명시 및 전체 가운데 정렬 기본) */
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
-    .dashboard-table th { padding:8px; font-weight:bold; border-bottom:1px solid #cbd5e1; }
-    .dashboard-table td { padding:8px; border-bottom:1px solid #f1f5f9; vertical-align:middle; color:#1e293b; }
+    .dashboard-table th { padding:8px; font-weight:bold; border-bottom:1px solid #cbd5e1; text-align:center; }
+    .dashboard-table td { padding:8px; border-bottom:1px solid #f1f5f9; vertical-align:middle; color:#1e293b; text-align:center; }
     .dashboard-table tr:nth-child(even) { background-color:#f8fafc; }
     .table-text-left { text-align: left !important; font-weight: bold; }
-    .category-cell-style { background-color: #f8fafc; font-weight: bold; color: #334155; border-right: 1px solid #e2e8f0; }
+    .category-cell-style { background-color: #f8fafc; font-weight: bold; color: #334155; border-right: 1px solid #e2e8f0; text-align:center !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -103,11 +100,11 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# [수정사항] 1번 요건: 메인 타이틀에 매핑할 날짜 포맷 자동 파싱 연동 (가장 최신 날짜 추출)
+# 메인 타이틀 업데이트 날짜 연동
 latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
-st.markdown(f'div class="report-title"■ 국제곡물 모니터링 대시보드span class="title-thin"(업데이트: {latest_macro_date_str})/span/div', unsafe_allow_html=True)
+st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
-# 가중치 복합 지수 연산
+# 가중치 복합 지수 연산 (밀 32%, 옥수수 28%, 콩 38%, 쌀 2%)
 df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'].fillna(0) * 0.32) + \
                           (df_macro['옥수수_달러톤'].fillna(0) * 0.28) + \
                           (df_macro['콩_달러톤'].fillna(0) * 0.38) + \
@@ -126,15 +123,22 @@ df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date
 # ==========================================
 def get_colored_chg_html(curr, base, is_pct_string=False):
     try:
-        # [수정사항] 3번 요건: 엑셀에서 문자열 변동률("▲ +3.2%", "▼ -1.5%")이 직접 넘어올 때 판정하는 분기문 보완
         if is_pct_string:
             val_str = str(curr).strip()
-            if "▲" in val_str or "+" in val_str:
-                return f'<span class="color-up">{val_str}</span>'
-            elif "▼" in val_str or "-" in val_str:
-                return f'<span class="color-down">{val_str}</span>'
+            if pd.isna(curr) or val_str.lower() in ['n/a', '-', '']:
+                return '<span class="color-flat">-</span>'
+            
+            clean_str = val_str.replace('%', '').replace('▲', '').replace('▼', '').replace('+', '').strip()
+            val_num = float(clean_str)
+            
+            if "▲" in val_str or "+" in val_str or val_num > 0:
+                display_str = f"▲+{val_num:.1f}%" if "▲" not in val_str and "+" not in val_str else val_str
+                return f'<span class="color-up">{display_str}</span>'
+            elif "▼" in val_str or "-" in val_str or val_num < 0:
+                display_str = f"▼{val_num:.1f}%" if "▼" not in val_str else val_str
+                return f'<span class="color-down">{display_str}</span>'
             else:
-                return f'<span class="color-flat">{val_str}</span>'
+                return f'<span class="color-flat">0.0%</span>'
 
         if pd.isna(curr) or pd.isna(base):
             return '<span class="color-flat">-</span>'
@@ -142,8 +146,7 @@ def get_colored_chg_html(curr, base, is_pct_string=False):
         c_num = float(curr)
         b_num = float(base)
         
-        if b_num == 0:
-            return '<span class="color-flat">-</span>'
+        if b_num == 0: return '<span class="color-flat">-</span>'
             
         val = ((c_num - b_num) / b_num) * 100
         if val > 0:
@@ -153,7 +156,7 @@ def get_colored_chg_html(curr, base, is_pct_string=False):
         else:
             return f'<span class="color-flat">0.0%</span>'
     except:
-        return '<span class="color-flat">-</span>'
+        return f'<span class="color-flat">{curr}</span>' if pd.notna(curr) else '<span class="color-flat">-</span>'
 
 def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", is_ratio=False):
     try:
@@ -190,7 +193,6 @@ def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", 
     </div>
     """, unsafe_allow_html=True)
 
-# [수정사항] 2번 요건: 환율 등에 1000단위 구분 심볼(,) 적용 인터페이스 구현
 def format_macro_val(val, prefix="", suffix="", is_currency=False):
     if pd.isna(val): return "N/A"
     try:
@@ -213,7 +215,7 @@ with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. 실시간 뉴스 크롤링 연동 (복합 키워드 확장 및 KREI 예외처리)
+# 3. 실시간 뉴스 크롤링 연동
 # ==========================================
 @st.cache_data(ttl=600)
 def fetch_realtime_news():
@@ -288,44 +290,43 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
-    # [수정사항] 2번 요건: 테이블 th 헤더에 text-align: center 강제부여, 컬럼명 문구 수정, 환율 1000단위 콤마 반영
     macro_table_html = f"""
-    <table class="dashboard-table">
-        <thead>
-            <tr>
-                <th style="text-align:center; width:35%;">주요 지표</th>
-                <th style="text-align:center; width:25%;">당일 가격</th>
-                <th style="text-align:center; width:20%;">전일 대비<br>증감</th>
-                <th style="text-align:center; width:20%;">전년 대비<br>증감</th>
+    <table style="width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center;">
+        <thead style="background-color:#f8fafc; color:#475569;">
+            <tr style="border-bottom:1px solid #cbd5e1;">
+                <th style="padding:8px; text-align:center; width:35%;">주요 지표</th>
+                <th style="padding:8px; text-align:center; width:25%;">당일 가격</th>
+                <th style="padding:8px; text-align:center; width:20%;">전일 대비<br>증감</th>
+                <th style="padding:8px; text-align:center; width:20%;">전년 대비<br>증감</th>
             </tr>
         </thead>
-        <tbody>
-            <tr>
-                <td class="table-text-left">⛽ 국제유가 (WTI)</td>
+        <tbody style="color:#1e293b;">
+            <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:8px; text-align:left; font-weight:bold;">⛽ 국제유가 (WTI)</td>
                 <td>{format_macro_val(latest['WTI'], "$", " / bbl")}</td>
                 <td>{get_colored_chg_html(latest['WTI'], prev_day['WTI'])}</td>
                 <td>{get_colored_chg_html(latest['WTI'], prev_year['WTI'])}</td>
             </tr>
-            <tr>
-                <td class="table-text-left">⛽ 국제유가 (브렌트)</td>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:8px; text-align:left; font-weight:bold;">⛽ 국제유가 (브렌트)</td>
                 <td>{format_macro_val(latest['브렌트'], "$", " / bbl")}</td>
                 <td>{get_colored_chg_html(latest['브렌트'], prev_day['브렌트'])}</td>
                 <td>{get_colored_chg_html(latest['브렌트'], prev_year['브렌트'])}</td>
             </tr>
-            <tr>
-                <td class="table-text-left">🚢 해상운임 (BPI)</td>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:8px; text-align:left; font-weight:bold;">🚢 해상운임 (BPI)</td>
                 <td>{format_macro_val(latest['BPI'], "", " pt")}</td>
                 <td>{get_colored_chg_html(latest['BPI'], prev_day['BPI'])}</td>
                 <td>{get_colored_chg_html(latest['BPI'], prev_year['BPI'])}</td>
             </tr>
-            <tr>
-                <td class="table-text-left">🚢 해상운임 (BSI)</td>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+                <td style="padding:8px; text-align:left; font-weight:bold;">🚢 해상운임 (BSI)</td>
                 <td>{format_macro_val(latest['BSI'], "", " pt")}</td>
                 <td>{get_colored_chg_html(latest['BSI'], prev_day['BSI'])}</td>
                 <td>{get_colored_chg_html(latest['BSI'], prev_year['BSI'])}</td>
             </tr>
             <tr>
-                <td class="table-text-left">💵 원/달러 환율</td>
+                <td style="padding:8px; text-align:left; font-weight:bold;">💵 원/달러 환율</td>
                 <td>{format_macro_val(latest['환율'], "", " 원", is_currency=True)}</td>
                 <td>{get_colored_chg_html(latest['환율'], prev_day['환율'])}</td>
                 <td>{get_colored_chg_html(latest['환율'], prev_year['환율'])}</td>
@@ -336,28 +337,27 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역 (요청사항 3번 스펙 맞춤 수동 HTML 결합 개편)
+# 5. 하단 수입 추이 영역 (Rowspan 묶음 처리 교정 완료)
 # ==========================================
 formatted_date = latest_import_date.strftime('%Y년 %m월')
 st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
-# [수정사항] 3번 요건: 스타일을 거시지표 테이블 스타일과 일치시키고, 첫 행 가운데 정렬, 수입량 1000단위 콤마 및 변동률 동적 컬러 매핑을 마크업으로 완벽 제어
 import_rows_html = ""
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
-# 식용 파트 빌드
+# [교정 파트] 식용 행 빌드 - 첫 번째 행(idx==0)에서만 rowspan="4" 적용하여 단 한번만 표시
 for idx, row in enumerate(food_df.to_dict('records')):
-    weight_val = f"{int(float(row['당월 수입량 (톤)'])):,}" if pd.notna(row['당월 수입량 (톤)']) and str(row['당월 수입량 (톤)']).lower() != 'n/a' else "N/A"
-    price_val = f"${float(row['당월 평균 수입단가(달러/톤)']):.2f}" if pd.notna(row['당월 평균 수입단가(달러/톤)']) and str(row['당월 평균 수입단가(달러/톤)']).lower() != 'n/a' else "N/A"
+    weight_val = f"{int(float(row['수입량 (톤)'])):,}" if pd.notna(row['수입량 (톤)']) and str(row['수입량 (톤)']).lower() != 'n/a' else "N/A"
+    price_val = f"${float(row['평균 수입단가(달러/톤)']):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and str(row['평균 수입단가(달러/톤)']).lower() != 'n/a' else "N/A"
     
     td_month_chg = get_colored_chg_html(row['전월 대비 증감'], None, is_pct_string=True)
     td_year_chg = get_colored_chg_html(row['전년 대비 증감'], None, is_pct_string=True)
     
     row_string = f"""
     <tr>
-        { '<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else '' }
-        <td class="table-text-left">{row['품목명']}</td>
+        { f'<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else '' }
+        <td class="table-text-left">{row['품목명'] if '품목명' in row else row.get('품목명', '')}</td>
         <td>{weight_val}</td>
         <td>{price_val}</td>
         <td>{td_month_chg}</td>
@@ -366,18 +366,18 @@ for idx, row in enumerate(food_df.to_dict('records')):
     """
     import_rows_html += row_string
 
-# 사료용 파트 빌드
+# [교정 파트] 사료용 행 빌드 - 첫 번째 행(idx==0)에서만 rowspan="3" 적용하여 단 한번만 표시
 for idx, row in enumerate(feed_df.to_dict('records')):
-    weight_val = f"{int(float(row['당월 수입량 (톤)'])):,}" if pd.notna(row['당월 수입량 (톤)']) and str(row['당월 수입량 (톤)']).lower() != 'n/a' else "N/A"
-    price_val = f"${float(row['당월 평균 수입단가(달러/톤)']):.2f}" if pd.notna(row['당월 평균 수입단가(달러/톤)']) and str(row['당월 평균 수입단가(달러/톤)']).lower() != 'n/a' else "N/A"
+    weight_val = f"{int(float(row['수입량 (톤)'])):,}" if pd.notna(row['수입량 (톤)']) and str(row['수입량 (톤)']).lower() != 'n/a' else "N/A"
+    price_val = f"${float(row['평균 수입단가(달러/톤)']):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and str(row['평균 수입단가(달러/톤)']).lower() != 'n/a' else "N/A"
     
     td_month_chg = get_colored_chg_html(row['전월 대비 증감'], None, is_pct_string=True)
     td_year_chg = get_colored_chg_html(row['전년 대비 증감'], None, is_pct_string=True)
     
     row_string = f"""
     <tr>
-        { '<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else '' }
-        <td class="table-text-left">{row['품목명']}</td>
+        { f'<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else '' }
+        <td class="table-text-left">{row['품목명'] if '품목명' in row else row.get('품목명', '')}</td>
         <td>{weight_val}</td>
         <td>{price_val}</td>
         <td>{td_month_chg}</td>
@@ -392,10 +392,10 @@ import_table_html = f"""
         <tr>
             <th style="text-align:center; width:10%;">구분</th>
             <th style="text-align:center; width:18%;">품목명</th>
-            <th style="text-align:center; width:18%;">당월 수입량 (톤)</th>
-            <th style="text-align:center; width:22%;">당월 평균 수입단가<br>(달러/톤)</th>
-            <th style="text-align:center; width:16%;">전월 대비<br>증감</th>
-            <th style="text-align:center; width:16%;">전년 대비<br>증감</th>
+            <th style="text-align:center; width:18%;">수입량 (톤)</th>
+            <th style="text-align:center; width:22%;">평균 수입단가 (달러/톤)</th>
+            <th style="text-align:center; width:16%;">전월 대비 증감</th>
+            <th style="text-align:center; width:16%;">전년 대비 증감</th>
         </tr>
     </thead>
     <tbody>
