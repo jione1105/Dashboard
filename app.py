@@ -421,4 +421,4 @@ import_table_html = f"""
     </tbody>
 </table>
 """
-st.markdown(import_table_html, unsafe_allow_html=True)
+st.markdown(f'div class="report-title"■ 국제곡물 모니터링 대시보드span class="title-thin"(업데이트: {latest_macro_date_str})/span/div', unsafe_allow_html=True)
