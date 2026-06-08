@@ -353,8 +353,8 @@ with main_col_right:
 # ==========================================
 # 5. 하단 수입 추이 영역
 # ==========================================
- Cinderella_date = latest_import_date.strftime('%Y년 %m월')
-st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {Cinderella_date})</span></div>', unsafe_allow_html=True)
+formatted_date = latest_import_date.strftime('%Y년 %m월')
+st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
 import_rows_html = ""
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
@@ -410,7 +410,7 @@ import_table_html = f"""
         <tr>
             <th style="width:10%;">구분</th>
             <th style="width:18%;">품목명</th>
-            <th style="width:18%;">수입량(톤)</th>
+            <th style="width:18%;">수입량 (톤)</th>
             <th style="width:22%;">평균 수입단가(달러/톤)</th>
             <th style="width:16%;">전월 대비<br>증감</th>
             <th style="width:16%;">전년 대비<br>증감</th>
