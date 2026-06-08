@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+from urllib.parse import quote  # 한글 시트명 URL 인코딩을 위한 라이브러리
 
 # ==========================================
 # 0. 페이지 기본 설정 및 스타일 정의
@@ -14,6 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# 행정 보고서 스타일 및 UI 정돈을 위한 CSS 인젝션
 st.markdown("""
     <style>
     .reportview-container, .main { background-color: #f1f5f9; }
@@ -42,22 +44,26 @@ st.markdown("""
 st.markdown('<div class="report-title">■ 국제곡물 모니터링 대시보드</div>', unsafe_allow_html=True)
 
 # ==========================================
-# 1. 구글 스프레드시트(엑셀) 연동 설정
+# 1. 구글 스프레드시트(엑셀) 연동 및 인코딩 보완
 # ==========================================
-# 본인의 구글 스프레드시트 주소를 아래에 바르게 붙여넣으세요.
+# 본인의 구글 스프레드시트 주소를 아래에 붙여넣으세요.
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuWe4iQcGuplyQXhW8WFCNwVE/edit?usp=sharing"
 
-@st.cache_data(ttl=30) # 30초 간격으로 동기화하여 실시간성 극대화
+@st.cache_data(ttl=60) # 60초 간격으로 동기화하여 실시간성 유지
 def load_excel_data(base_url):
     try:
         sheet_id = base_url.split("/d/")[1].split("/")[0]
         
+        # [해결책] 한글 시트 이름을 웹 표준 URL 규격으로 안전하게 인코딩 처리
+        sheet_macro_encoded = quote("시황_거시지표")
+        sheet_import_encoded = quote("수입_추이")
+        
         # 1) 시황 및 거시지표 로드
-        url_macro = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=시황_거시지표"
+        url_macro = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_macro_encoded}"
         df_macro = pd.read_csv(url_macro)
         
         # 2) 시계열 수입 추이 로드
-        url_import = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=수입_추이"
+        url_import = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_import_encoded}"
         df_import = pd.read_csv(url_import)
         
         return df_macro, df_import
@@ -71,7 +77,7 @@ if df_macro_raw is None or df_import_raw is None:
     st.stop()
 
 # --- 데이터 가공 프로세스 ---
-# 시황 처리
+# 시황 및 거시지표 처리
 df_macro_raw['날짜'] = pd.to_datetime(df_macro_raw['날짜'])
 df_macro = df_macro_raw.sort_values(by='날짜').set_index('날짜')
 latest = df_macro.iloc[-1]
@@ -81,7 +87,7 @@ prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 # 가중치 복합 지수 연산 (밀20%, 옥수수40%, 콩30%, 쌀10%)
 df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'] * 0.20) + (df_macro['옥수수_달러톤'] * 0.40) + (df_macro['콩_달러톤'] * 0.30) + (df_macro['쌀_달러톤'] * 0.10)
 
-# [신규 수정 기능] 수입 추이 시계열 중 가장 마지막 행(가장 최신 날짜) 데이터 자동 필터링 로직
+# 수입 추이 시계열 중 가장 마지막 행(가장 최신 날짜) 데이터 자동 필터링 로직
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max() # 시트에 입력된 가장 최신 날짜 확보
 df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date].copy()
@@ -181,10 +187,10 @@ with main_col_right:
     for item in real_news:
         st.markdown(f'<li class="news-item"><span class="news-tag">{item["tag"]}</span>{item["content"]}</li>', unsafe_allow_html=True)
     
-    # [수정 기능] 거시지표 내 해상운임 항목 BPI 및 BSI 전면 매핑
+    # 해상운임 항목 BPI 및 BSI 반영 구조
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     macro_data = pd.DataFrame({
-        '지표명': ['🛢️ 국제유가 (WTI)', '🛢️ 국제유가 (브렌트)', '🚢 해상운임 (BPI)', '🚢 해상운임 (BSI)', '💵 원/달러 환율'],
+        '지표명': ['⛽ 국제유가 (WTI)', '⛽ 국제유가 (브렌트)', '🚢 해상운임 (BPI)', '🚢 해상운임 (BSI)', '💵 원/달러 환율'],
         '전일 가격': [f"${latest['WTI']:.2f} / bbl", f"${latest['브렌트']:.2f} / bbl", f"{int(latest['BPI'])} pt", f"{int(latest['BSI'])} pt", f"{int(latest['환율'])} 원"],
         '전일 대비\n증감': [f"{calc_chg(latest['WTI'], prev_day['WTI']):+.1f}%", f"{calc_chg(latest['브렌트'], prev_day['브렌트']):+.1f}%", f"{calc_chg(latest['BPI'], prev_day['BPI']):+.1f}%", f"{calc_chg(latest['BSI'], prev_day['BSI']):+.1f}%", f"{calc_chg(latest['환율'], prev_day['환율']):+.1f}%"],
         '전년 대비\n증감': [f"{calc_chg(latest['WTI'], prev_year['WTI']):+.1f}%", f"{calc_chg(latest['브렌트'], prev_year['브렌트']):+.1f}%", f"{calc_chg(latest['BPI'], prev_year['BPI']):+.1f}%", f"{calc_chg(latest['BSI'], prev_year['BSI']):+.1f}%", f"{calc_chg(latest['환율'], prev_year['환율']):+.1f}%"]
@@ -192,8 +198,8 @@ with main_col_right:
     st.dataframe(macro_data, use_container_width=True, hide_index=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역 (마지막 행 자동 업데이트 뷰 반영)
+# 5. 하단 수입 추이 영역 (마지막 행 자동 최신 데이터 필터링)
 # ==========================================
 formatted_date = latest_import_date.strftime('%Y년 %m월')
-st.markdown(f'<div class="section-title">📋 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">🛄 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 st.dataframe(df_import_final, use_container_width=True, hide_index=True)
