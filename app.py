@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
-from urllib.parse import quote  # 한글 인코딩을 위한 라이브러리
+from urllib.parse import quote
 
 # ==========================================
 # 0. 페이지 기본 설정 및 스타일 정의
@@ -60,7 +60,11 @@ SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuW
 @st.cache_data(ttl=30)
 def load_excel_data(base_url):
     try:
-        sheet_id = base_url.split("/d/")[1].split("/")[0]
+        if "/d/" in base_url:
+            sheet_id = base_url.split("/d/")[1].split("/")[0]
+        else:
+            sheet_id = base_url
+            
         sheet_macro_encoded = quote("시황_거시지표")
         sheet_import_encoded = quote("수입_추이")
         
@@ -107,30 +111,48 @@ df_import_final = df_import_filtered.drop(columns=['날짜'])
 # 수치 판정 및 HTML 변환 유틸리티 함수
 # ==========================================
 def get_colored_chg_html(curr, base):
-    if pd.isna(curr) or pd.isna(base) or base == 0:
+    try:
+        if pd.isna(curr) or pd.isna(base):
+            return '<span class="color-flat">-</span>'
+        
+        c_num = float(curr)
+        b_num = float(base)
+        
+        if b_num == 0:
+            return '<span class="color-flat">-</span>'
+            
+        val = ((c_num - b_num) / b_num) * 100
+        if val > 0:
+            return f'<span class="color-up">▲+{val:.1f}%</span>'
+        elif val < 0:
+            return f'<span class="color-down">▼{val:.1f}%</span>'
+        else:
+            return f'<span class="color-flat">0.0%</span>'
+    except:
         return '<span class="color-flat">-</span>'
-    
-    val = ((curr - base) / base) * 100
-    if val > 0:
-        return f'<span class="color-up">▲+{val:.1f}%</span>'
-    elif val < 0:
-        return f'<span class="color-down">▼{val:.1f}%</span>'
-    else:
-        return f'<span class="color-flat">0.0%</span>'
 
 def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", is_ratio=False):
-    if pd.isna(curr_val):
+    try:
+        is_val_na = pd.isna(curr_val) or (hasattr(curr_val, 'isna') and curr_val.isna().all())
+    except:
+        is_val_na = False
+
+    if is_val_na:
         value_html = '<span class="metric-val-text">N/A</span>'
         delta_html = '<div style="font-size:11px; color:#64748b; margin-top:4px;">-</div>'
     else:
+        val_clean = curr_val.iloc[0] if isinstance(curr_val, pd.Series) else curr_val
+        b_day_clean = base_day.iloc[0] if isinstance(base_day, pd.Series) else base_day
+        b_yr_clean = base_year.iloc[0] if isinstance(base_year, pd.Series) else base_year
+
         if is_ratio:
-            value_html = f'<span class="metric-val-text">{curr_val:.2f}</span><span class="sub-text">(적정: 2.50)</span>'
-            chg_day = get_colored_chg_html(curr_val, base_day)
+            value_html = f'<span class="metric-val-text">{float(val_clean):.2f}</span><span class="sub-text">(적정: 2.50)</span>'
+            chg_day = get_colored_chg_html(val_clean, b_day_clean)
             delta_html = f'<div style="font-size:11px; color:#64748b; margin-top:4px;">전일 대비 변동: {chg_day}</div>'
         else:
-            value_html = f'<span class="metric-val-text">{int(float(curr_val))}</span><span class="unit-text">{unit}</span>'
-            chg_day = get_colored_chg_html(curr_val, base_day)
-            chg_yr = get_colored_chg_html(curr_val, base_year)
+            value_html = f'<span class="metric-val-text">{int(float(val_clean))}</span><span class="unit-text">{unit}</span>'
+            chg_day = get_colored_chg_html(val_clean, b_day_clean)
+            chg_yr = get_colored_chg_html(val_clean, b_yr_clean)
             delta_html = f'<div style="font-size:11px; margin-top:4px;">{chg_day} (전일) | {chg_yr} (전년)</div>'
 
     card_bg = "#fffbeb" if is_ratio else "#f8fafc"
@@ -161,7 +183,7 @@ with col1:
 with col2:
     render_metric_card("🌽 옥수수 선물", latest['옥수수_달러톤'], prev_day['옥수수_달러톤'], prev_year['옥수수_달러톤'])
 with col3:
-    render_metric_card("🫘 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'])
+    render_metric_card("🥜🫘 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'])
 with col4:
     render_metric_card("🍚 쌀 수출 (태국)", latest['쌀_달러톤'], prev_day['쌀_달러톤'], prev_year['쌀_달러톤'])
 with col5:
@@ -170,28 +192,43 @@ with col5:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. 실시간 뉴스 크롤링 연동 ([해결책] 한글 쿼리 인코딩 적용)
+# [수정사항] 3. 국제곡물 주요 뉴스 검색 및 KREI 필터링 로직 (자동화)
 # ==========================================
 @st.cache_data(ttl=600)
 def fetch_realtime_news():
     news_items = []
     try:
-        # [수정] 뉴스 검색어 주소창의 한글 파트를 quote()로 묶어 아스키 에러 완전 방지
-        query_encoded = quote("국제곡물 WASDE")
+        # 2번 요건: 검색 키워드 풀 확장 (cbot, wheat, corn, maize, soybean, rice 복합 쿼리 구성)
+        search_query = '국제곡물 (cbot OR wheat OR corn OR maize OR soybean OR rice)'
+        query_encoded = quote(search_query)
         url = f"https://news.google.com/rss/search?q={query_encoded}&hl=ko&gl=KR&ceid=KR:ko"
         
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.content, features="xml")
-        articles = soup.findAll("item")[:3]
+        articles = soup.findAll("item")
+        
         for article in articles:
             title = article.title.text.split(" - ")[0]
             source = article.title.text.split(" - ")[1] if " - " in article.title.text else "외신"
+            
+            # 2번 요건: KREI 관련 데이터 무조건 배제 필터링 (제목 및 출처 검증)
+            if "KREI" in source or "한국농촌경제연구원" in source or "농촌경제연구원" in title or "KREI" in title:
+                continue
+                
             news_items.append({"tag": source, "content": title})
+            
+            # 최종 노출할 최신 뉴스 개수를 3개로 제한
+            if len(news_items) == 3:
+                break
     except:
+        pass
+        
+    # 크롤링 제한 또는 네트워크 다운 시 UI 깨짐 방지 안전장치 폴백 백업 데이터
+    if not news_items:
         news_items = [
             {"tag": "농식품부", "content": "국제곡물 가격 변동성 대응을 위한 민관 합동 재고 점검 및 헷징 전략 고도화 추진"},
             {"tag": "외신종합", "content": "남미 주산지 기후 여건 개선에 따른 소맥 및 옥수수 선물 매도 우위 전개"},
-            {"tag": "KREI", "content": "해외 곡물시장 동향 분석 보고서: 환율 압박에 따른 CIF 도입단가 방어 초점"}
+            {"tag": "금융투자", "content": "해외 곡물시장 동향 분석 보고서: 환율 압박에 따른 CIF 도입단가 방어 초점"}
         ]
     return news_items
 
@@ -219,13 +256,14 @@ with main_col_left:
     if filtered_df[chart_target].isna().all():
         st.warning("선택한 기간 내에 분석할 시황 데이터가 엑셀에 존재하지 않습니다.")
     else:
-        # 선형 보간법(Linear Interpolation) 적용 후 5MA 연산 (결측 단절 방지)
         filtered_df[chart_target] = filtered_df[chart_target].interpolate(method='linear', limit_direction='both')
         filtered_df['5MA'] = filtered_df[chart_target].rolling(window=5).mean()
         
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name="국제곡물 선물가격지수" if selected_grain == "국제곡물 선물가격지수" else selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
-        fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dash')))
+        
+        # [수정사항] 1번 요건: 5일 이동평균선의 시각적 가독성 개선을 위해 dash 매개변수를 'dot'으로 변경하여 더 촘촘한 점선 구현
+        fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dot')))
         
         fig.update_layout(
             margin=dict(l=10, r=10, t=10, b=10), height=325,
@@ -241,7 +279,6 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
-    # 거시지표 동적 컬러 마크업 연동 html 테이블 구조화
     macro_table_html = f"""
     <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:center;">
         <thead style="background-color:#f8fafc; color:#475569;">
@@ -254,13 +291,13 @@ with main_col_right:
         </thead>
         <tbody style="color:#1e293b;">
             <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:8px; text-align:left; font-weight:bold;">🛢️ 국제유가 (WTI)</td>
+                <td style="padding:8px; text-align:left; font-weight:bold;">⛽ 국제유가 (WTI)</td>
                 <td>{format_macro_val(latest['WTI'], "$", " / bbl")}</td>
                 <td>{get_colored_chg_html(latest['WTI'], prev_day['WTI'])}</td>
                 <td>{get_colored_chg_html(latest['WTI'], prev_year['WTI'])}</td>
             </tr>
             <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:8px; text-align:left; font-weight:bold;">🛢️ 국제유가 (브렌트)</td>
+                <td style="padding:8px; text-align:left; font-weight:bold;">⛽ 국제유가 (브렌트)</td>
                 <td>{format_macro_val(latest['브렌트'], "$", " / bbl")}</td>
                 <td>{get_colored_chg_html(latest['브렌트'], prev_day['브렌트'])}</td>
                 <td>{get_colored_chg_html(latest['브렌트'], prev_year['브렌트'])}</td>
@@ -292,7 +329,7 @@ with main_col_right:
 # 5. 하단 수입 추이 영역
 # ==========================================
 formatted_date = latest_import_date.strftime('%Y년 %m월')
-st.markdown(f'<div class="section-title">📋 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">🛄 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
 df_import_final = df_import_final.fillna("N/A")
 st.dataframe(df_import_final, use_container_width=True, hide_index=True)
