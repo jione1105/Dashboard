@@ -63,6 +63,7 @@ st.markdown("""
 # ==========================================
 # 1. 구글 스프레드시트(엑셀) 연동 설정
 # ==========================================
+# 본인의 구글 스프레드시트 주소를 아래에 바르게 붙여넣으세요.
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuWe4iQcGuplyQXhW8WFCNwVE/edit?usp=sharing"
 
 @st.cache_data(ttl=30)
@@ -100,12 +101,11 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# 메인 타이틀 업데이트 날짜 연동
+# [수정 복원 완료] 상단 마크업 괄호 태그 규칙(<div ...>)을 안전하게 닫아 차단벽 형성
 latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
 st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
 # 가중치 복합 지수 연산 (밀 32%, 옥수수 28%, 콩 38%, 쌀 2%)
-# 연산 안정화를 위해 먼저 수치형 변환 클렌징 함수 적용 후 연산
 def clean_numeric(val):
     if pd.isna(val): return 0.0
     try:
@@ -130,7 +130,6 @@ df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date
 # ==========================================
 # 수치 판정 및 HTML 변환 유틸리티 함수
 # ==========================================
-# [고도화 반영] 엑셀에 단위(pt, $)나 콤마(,)가 텍스트로 적혀있어도 숫자를 강제 정제하여 증감률을 완벽히 계산
 def get_colored_chg_html(curr, base, is_pct_string=False):
     try:
         if is_pct_string:
@@ -153,7 +152,6 @@ def get_colored_chg_html(curr, base, is_pct_string=False):
         if pd.isna(curr) or pd.isna(base):
             return '<span class="color-flat">-</span>'
         
-        # 텍스트 형태 방지용 문자 제거 파싱 처리
         c_num = float(str(curr).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
         b_num = float(str(base).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
         
@@ -281,7 +279,6 @@ with main_col_left:
     if filtered_df[chart_target].isna().all():
         st.warning("선택한 기간 내에 분석할 시황 데이터가 엑셀에 존재하지 않습니다.")
     else:
-        # 보간 처리를 위해 시리즈 내부 값 정제 처리 선행
         filtered_df[chart_target] = filtered_df[chart_target].apply(lambda x: clean_numeric(x) if pd.notna(x) else None)
         filtered_df[chart_target] = filtered_df[chart_target].interpolate(method='linear', limit_direction='both')
         filtered_df['5MA'] = filtered_df[chart_target].rolling(window=5).mean()
@@ -305,43 +302,43 @@ with main_col_right:
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
     macro_table_html = f"""
-    <table style="width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center;">
-        <thead style="background-color:#f8fafc; color:#475569;">
-            <tr style="border-bottom:1px solid #cbd5e1;">
-                <th style="padding:8px; text-align:center; width:35%;">주요 지표</th>
-                <th style="padding:8px; text-align:center; width:25%;">당일 동향</th>
-                <th style="padding:8px; text-align:center; width:20%;">전일 대비<br>증감</th>
-                <th style="padding:8px; text-align:center; width:20%;">전년 대비<br>증감</th>
+    <table class="dashboard-table">
+        <thead>
+            <tr>
+                <th style="text-align:center; width:35%;">주요 지표</th>
+                <th style="text-align:center; width:25%;">당일 가격</th>
+                <th style="text-align:center; width:20%;">전일 대비<br>증감</th>
+                <th style="text-align:center; width:20%;">전년 대비<br>증감</th>
             </tr>
         </thead>
-        <tbody style="color:#1e293b;">
-            <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:8px; text-align:left; font-weight:bold;">⛽ 국제유가 (WTI)</td>
+        <tbody>
+            <tr>
+                <td class="table-text-left">⛽ 국제유가 (WTI)</td>
                 <td>{format_macro_val(latest['WTI'], "$", " / bbl")}</td>
                 <td>{get_colored_chg_html(latest['WTI'], prev_day['WTI'])}</td>
                 <td>{get_colored_chg_html(latest['WTI'], prev_year['WTI'])}</td>
             </tr>
-            <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:8px; text-align:left; font-weight:bold;">⛽ 국제유가 (브렌트)</td>
+            <tr>
+                <td class="table-text-left">⛽ 국제유가 (브렌트)</td>
                 <td>{format_macro_val(latest['브렌트'], "$", " / bbl")}</td>
                 <td>{get_colored_chg_html(latest['브렌트'], prev_day['브렌트'])}</td>
                 <td>{get_colored_chg_html(latest['브렌트'], prev_year['브렌트'])}</td>
             </tr>
-            <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:8px; text-align:left; font-weight:bold;">🚢 해상운임 (BPI)</td>
-                <td>{format_macro_val(latest['BPI'], "", "pt")}</td>
+            <tr>
+                <td class="table-text-left">🚢 해상운임 (BPI)</td>
+                <td>{format_macro_val(latest['BPI'], "", " pt")}</td>
                 <td>{get_colored_chg_html(latest['BPI'], prev_day['BPI'])}</td>
                 <td>{get_colored_chg_html(latest['BPI'], prev_year['BPI'])}</td>
             </tr>
-            <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:8px; text-align:left; font-weight:bold;">🚢 해상운임 (BSI)</td>
-                <td>{format_macro_val(latest['BSI'], "", "pt")}</td>
+            <tr>
+                <td class="table-text-left">🚢 해상운임 (BSI)</td>
+                <td>{format_macro_val(latest['BSI'], "", " pt")}</td>
                 <td>{get_colored_chg_html(latest['BSI'], prev_day['BSI'])}</td>
                 <td>{get_colored_chg_html(latest['BSI'], prev_year['BSI'])}</td>
             </tr>
             <tr>
-                <td style="padding:8px; text-align:left; font-weight:bold;">💵 원/달러 환율</td>
-                <td>{format_macro_val(latest['환율'], "", "원", is_currency=True)}</td>
+                <td class="table-text-left">💵 원/달러 환율</td>
+                <td>{format_macro_val(latest['환율'], "", " 원", is_currency=True)}</td>
                 <td>{get_colored_chg_html(latest['환율'], prev_day['환율'])}</td>
                 <td>{get_colored_chg_html(latest['환율'], prev_year['환율'])}</td>
             </tr>
@@ -360,15 +357,16 @@ import_rows_html = ""
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
+# 식용 파트 빌드
 for idx, row in enumerate(food_df.to_dict('records')):
-    w_clean = str(row['수입량(톤)']).replace(',', '').strip()
-    p_clean = str(row['평균 수입단가(달러/톤)']).replace('$', '').replace(',', '').strip()
+    w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
+    p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
     
-    weight_val = f"{int(float(w_clean)):,}" if pd.notna(row['수입량(톤)']) and w_clean.lower() != 'n/a' else "N/A"
-    price_val = f"${float(p_clean):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and p_clean.lower() != 'n/a' else "N/A"
+    weight_val = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
+    price_val = f"${float(p_clean):.2f}" if pd.notna(row.get('평균 수입단가(달러/톤)')) and p_clean.lower() != 'n/a' else "N/A"
     
-    td_month_chg = get_colored_chg_html(row['전월 대비 증감'], None, is_pct_string=True)
-    td_year_chg = get_colored_chg_html(row['전년 대비 증감'], None, is_pct_string=True)
+    td_month_chg = get_colored_chg_html(row.get('전월 대비 증감'), None, is_pct_string=True)
+    td_year_chg = get_colored_chg_html(row.get('전년 대비 증감'), None, is_pct_string=True)
     
     row_string = f"""
     <tr>
@@ -382,15 +380,16 @@ for idx, row in enumerate(food_df.to_dict('records')):
     """
     import_rows_html += row_string
 
+# 사료용 파트 빌드
 for idx, row in enumerate(feed_df.to_dict('records')):
-    w_clean = str(row['수입량(톤)']).replace(',', '').strip()
-    p_clean = str(row['평균 수입단가(달러/톤)']).replace('$', '').replace(',', '').strip()
+    w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
+    p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
     
-    weight_val = f"{int(float(w_clean)):,}" if pd.notna(row['수입량(톤)']) and w_clean.lower() != 'n/a' else "N/A"
-    price_val = f"${float(p_clean):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and p_clean.lower() != 'n/a' else "N/A"
+    weight_val = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
+    price_val = f"${float(p_clean):.2f}" if pd.notna(row.get('평균 수입단가(달러/톤)')) and p_clean.lower() != 'n/a' else "N/A"
     
-    td_month_chg = get_colored_chg_html(row['전월 대비 증감'], None, is_pct_string=True)
-    td_year_chg = get_colored_chg_html(row['전년 대비 증감'], None, is_pct_string=True)
+    td_month_chg = get_colored_chg_html(row.get('전월 대비 증감'), None, is_pct_string=True)
+    td_year_chg = get_colored_chg_html(row.get('전년 대비 증감'), None, is_pct_string=True)
     
     row_string = f"""
     <tr>
@@ -410,7 +409,7 @@ import_table_html = f"""
         <tr>
             <th style="width:10%;">구분</th>
             <th style="width:18%;">품목명</th>
-            <th style="width:18%;">수입량 (톤)</th>
+            <th style="width:18%;">수입량(톤)</th>
             <th style="width:22%;">평균 수입단가(달러/톤)</th>
             <th style="width:16%;">전월 대비<br>증감</th>
             <th style="width:16%;">전년 대비<br>증감</th>
@@ -421,4 +420,4 @@ import_table_html = f"""
     </tbody>
 </table>
 """
-st.markdown(f'div class="report-title"■ 국제곡물 모니터링 대시보드span class="title-thin"(업데이트: {latest_macro_date_str})/span/div', unsafe_allow_html=True)
+st.markdown(import_table_html, unsafe_allow_html=True)
