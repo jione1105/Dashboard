@@ -105,10 +105,19 @@ latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
 st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
 # 가중치 복합 지수 연산 (밀 32%, 옥수수 28%, 콩 38%, 쌀 2%)
-df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'].fillna(0) * 0.32) + \
-                          (df_macro['옥수수_달러톤'].fillna(0) * 0.28) + \
-                          (df_macro['콩_달러톤'].fillna(0) * 0.38) + \
-                          (df_macro['쌀_달러톤'].fillna(0) * 0.02)
+# 연산 안정화를 위해 먼저 수치형 변환 클렌징 함수 적용 후 연산
+def clean_numeric(val):
+    if pd.isna(val): return 0.0
+    try:
+        clean_str = str(val).replace('$', '').replace('pt', '').replace('원', '').replace('/bbl', '').replace(',', '').strip()
+        return float(clean_str)
+    except:
+        return 0.0
+
+df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'].apply(clean_numeric) * 0.32) + \
+                          (df_macro['옥수수_달러톤'].apply(clean_numeric) * 0.28) + \
+                          (df_macro['콩_달러톤'].apply(clean_numeric) * 0.38) + \
+                          (df_macro['쌀_달러톤'].apply(clean_numeric) * 0.02)
 
 all_nan_mask = df_macro[['밀_달러톤', '옥수수_달러톤', '콩_달러톤', '쌀_달러톤']].isna().all(axis=1)
 df_macro.loc[all_nan_mask, '국제곡물_선물가격지수'] = None
@@ -121,6 +130,7 @@ df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date
 # ==========================================
 # 수치 판정 및 HTML 변환 유틸리티 함수
 # ==========================================
+# [고도화 반영] 엑셀에 단위(pt, $)나 콤마(,)가 텍스트로 적혀있어도 숫자를 강제 정제하여 증감률을 완벽히 계산
 def get_colored_chg_html(curr, base, is_pct_string=False):
     try:
         if is_pct_string:
@@ -143,8 +153,9 @@ def get_colored_chg_html(curr, base, is_pct_string=False):
         if pd.isna(curr) or pd.isna(base):
             return '<span class="color-flat">-</span>'
         
-        c_num = float(curr)
-        b_num = float(base)
+        # 텍스트 형태 방지용 문자 제거 파싱 처리
+        c_num = float(str(curr).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
+        b_num = float(str(base).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
         
         if b_num == 0: return '<span class="color-flat">-</span>'
             
@@ -177,13 +188,13 @@ def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", 
             chg_day = get_colored_chg_html(val_clean, b_day_clean)
             delta_html = f'<div style="font-size:11px; color:#64748b; margin-top:4px;">전일 대비 변동: {chg_day}</div>'
         else:
-            value_html = f'<span class="metric-val-text">{int(float(val_clean))}</span><span class="unit-text">{unit}</span>'
+            value_html = f'<span class="metric-val-text">{int(float(str(val_clean).replace(",","")))}</span><span class="unit-text">{unit}</span>'
             chg_day = get_colored_chg_html(val_clean, b_day_clean)
             chg_yr = get_colored_chg_html(val_clean, b_yr_clean)
             delta_html = f'<div style="font-size:11px; margin-top:4px;">{chg_day} (전일) | {chg_yr} (전년)</div>'
 
     card_bg = "#fffbeb" if is_ratio else "#f8fafc"
-    card_border = "#b45309" if is_ratio else "#3b82f6"
+    card_border = "#3b82f6" if not is_ratio else "#b45309"
     
     st.markdown(f"""
     <div style="background-color: {card_bg}; border: 1px solid #e2e8f0; border-top: 4px solid {card_border}; border-radius: 4px; padding: 12px; text-align: center; height:108px; width:100%;">
@@ -196,10 +207,11 @@ def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", 
 def format_macro_val(val, prefix="", suffix="", is_currency=False):
     if pd.isna(val): return "N/A"
     try:
-        if "bbl" in suffix: return f"{prefix}{float(val):.2f}{suffix}"
-        if is_currency:
-            return f"{prefix}{int(float(val)):,}{suffix}"
-        return f"{prefix}{int(float(val))}{suffix}"
+        clean_val = float(str(val).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
+        if "bbl" in suffix: return f"{prefix}{clean_val:.2f}{suffix}"
+        if is_currency or "pt" in suffix or "원" in suffix:
+            return f"{prefix}{int(clean_val):,}{suffix}"
+        return f"{prefix}{int(clean_val)}{suffix}"
     except: return f"{val}"
 
 # ==========================================
@@ -269,6 +281,8 @@ with main_col_left:
     if filtered_df[chart_target].isna().all():
         st.warning("선택한 기간 내에 분석할 시황 데이터가 엑셀에 존재하지 않습니다.")
     else:
+        # 보간 처리를 위해 시리즈 내부 값 정제 처리 선행
+        filtered_df[chart_target] = filtered_df[chart_target].apply(lambda x: clean_numeric(x) if pd.notna(x) else None)
         filtered_df[chart_target] = filtered_df[chart_target].interpolate(method='linear', limit_direction='both')
         filtered_df['5MA'] = filtered_df[chart_target].rolling(window=5).mean()
         
@@ -295,7 +309,7 @@ with main_col_right:
         <thead style="background-color:#f8fafc; color:#475569;">
             <tr style="border-bottom:1px solid #cbd5e1;">
                 <th style="padding:8px; text-align:center; width:35%;">주요 지표</th>
-                <th style="padding:8px; text-align:center; width:25%;">당일 가격</th>
+                <th style="padding:8px; text-align:center; width:25%;">당일 동향</th>
                 <th style="padding:8px; text-align:center; width:20%;">전일 대비<br>증감</th>
                 <th style="padding:8px; text-align:center; width:20%;">전년 대비<br>증감</th>
             </tr>
@@ -315,19 +329,19 @@ with main_col_right:
             </tr>
             <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:8px; text-align:left; font-weight:bold;">🚢 해상운임 (BPI)</td>
-                <td>{format_macro_val(latest['BPI'], "", " pt")}</td>
+                <td>{format_macro_val(latest['BPI'], "", "pt")}</td>
                 <td>{get_colored_chg_html(latest['BPI'], prev_day['BPI'])}</td>
                 <td>{get_colored_chg_html(latest['BPI'], prev_year['BPI'])}</td>
             </tr>
             <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:8px; text-align:left; font-weight:bold;">🚢 해상운임 (BSI)</td>
-                <td>{format_macro_val(latest['BSI'], "", " pt")}</td>
+                <td>{format_macro_val(latest['BSI'], "", "pt")}</td>
                 <td>{get_colored_chg_html(latest['BSI'], prev_day['BSI'])}</td>
                 <td>{get_colored_chg_html(latest['BSI'], prev_year['BSI'])}</td>
             </tr>
             <tr>
                 <td style="padding:8px; text-align:left; font-weight:bold;">💵 원/달러 환율</td>
-                <td>{format_macro_val(latest['환율'], "", " 원", is_currency=True)}</td>
+                <td>{format_macro_val(latest['환율'], "", "원", is_currency=True)}</td>
                 <td>{get_colored_chg_html(latest['환율'], prev_day['환율'])}</td>
                 <td>{get_colored_chg_html(latest['환율'], prev_year['환율'])}</td>
             </tr>
@@ -337,19 +351,21 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역 (Rowspan 묶음 처리 교정 완료)
+# 5. 하단 수입 추이 영역
 # ==========================================
-formatted_date = latest_import_date.strftime('%Y년 %m월')
-st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
+ Cinderella_date = latest_import_date.strftime('%Y년 %m월')
+st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {Cinderella_date})</span></div>', unsafe_allow_html=True)
 
 import_rows_html = ""
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
-# [교정 파트] 식용 행 빌드 - 첫 번째 행(idx==0)에서만 rowspan="4" 적용하여 단 한번만 표시
 for idx, row in enumerate(food_df.to_dict('records')):
-    weight_val = f"{int(float(row['수입량 (톤)'])):,}" if pd.notna(row['수입량 (톤)']) and str(row['수입량 (톤)']).lower() != 'n/a' else "N/A"
-    price_val = f"${float(row['평균 수입단가(달러/톤)']):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and str(row['평균 수입단가(달러/톤)']).lower() != 'n/a' else "N/A"
+    w_clean = str(row['수입량(톤)']).replace(',', '').strip()
+    p_clean = str(row['평균 수입단가(달러/톤)']).replace('$', '').replace(',', '').strip()
+    
+    weight_val = f"{int(float(w_clean)):,}" if pd.notna(row['수입량(톤)']) and w_clean.lower() != 'n/a' else "N/A"
+    price_val = f"${float(p_clean):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and p_clean.lower() != 'n/a' else "N/A"
     
     td_month_chg = get_colored_chg_html(row['전월 대비 증감'], None, is_pct_string=True)
     td_year_chg = get_colored_chg_html(row['전년 대비 증감'], None, is_pct_string=True)
@@ -357,7 +373,7 @@ for idx, row in enumerate(food_df.to_dict('records')):
     row_string = f"""
     <tr>
         { f'<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else '' }
-        <td class="table-text-left">{row['품목명'] if '품목명' in row else row.get('품목명', '')}</td>
+        <td class="table-text-left">{row.get('품목명', '')}</td>
         <td>{weight_val}</td>
         <td>{price_val}</td>
         <td>{td_month_chg}</td>
@@ -366,10 +382,12 @@ for idx, row in enumerate(food_df.to_dict('records')):
     """
     import_rows_html += row_string
 
-# [교정 파트] 사료용 행 빌드 - 첫 번째 행(idx==0)에서만 rowspan="3" 적용하여 단 한번만 표시
 for idx, row in enumerate(feed_df.to_dict('records')):
-    weight_val = f"{int(float(row['수입량 (톤)'])):,}" if pd.notna(row['수입량 (톤)']) and str(row['수입량 (톤)']).lower() != 'n/a' else "N/A"
-    price_val = f"${float(row['평균 수입단가(달러/톤)']):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and str(row['평균 수입단가(달러/톤)']).lower() != 'n/a' else "N/A"
+    w_clean = str(row['수입량(톤)']).replace(',', '').strip()
+    p_clean = str(row['평균 수입단가(달러/톤)']).replace('$', '').replace(',', '').strip()
+    
+    weight_val = f"{int(float(w_clean)):,}" if pd.notna(row['수입량(톤)']) and w_clean.lower() != 'n/a' else "N/A"
+    price_val = f"${float(p_clean):.2f}" if pd.notna(row['평균 수입단가(달러/톤)']) and p_clean.lower() != 'n/a' else "N/A"
     
     td_month_chg = get_colored_chg_html(row['전월 대비 증감'], None, is_pct_string=True)
     td_year_chg = get_colored_chg_html(row['전년 대비 증감'], None, is_pct_string=True)
@@ -377,7 +395,7 @@ for idx, row in enumerate(feed_df.to_dict('records')):
     row_string = f"""
     <tr>
         { f'<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else '' }
-        <td class="table-text-left">{row['품목명'] if '품목명' in row else row.get('품목명', '')}</td>
+        <td class="table-text-left">{row.get('품목명', '')}</td>
         <td>{weight_val}</td>
         <td>{price_val}</td>
         <td>{td_month_chg}</td>
@@ -390,12 +408,12 @@ import_table_html = f"""
 <table class="dashboard-table">
     <thead>
         <tr>
-            <th style="text-align:center; width:10%;">구분</th>
-            <th style="text-align:center; width:18%;">품목명</th>
-            <th style="text-align:center; width:18%;">수입량 (톤)</th>
-            <th style="text-align:center; width:22%;">평균 수입단가 (달러/톤)</th>
-            <th style="text-align:center; width:16%;">전월 대비 증감</th>
-            <th style="text-align:center; width:16%;">전년 대비 증감</th>
+            <th style="width:10%;">구분</th>
+            <th style="width:18%;">품목명</th>
+            <th style="width:18%;">수입량(톤)</th>
+            <th style="width:22%;">평균 수입단가(달러/톤)</th>
+            <th style="width:16%;">전월 대비<br>증감</th>
+            <th style="width:16%;">전년 대비<br>증감</th>
         </tr>
     </thead>
     <tbody>
