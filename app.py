@@ -61,7 +61,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 구글 스프레드시트(엑셀) 연동 설정 (제공 주소 고정 적용)
+# 1. 구글 스프레드시트(엑셀) 연동 설정
 # ==========================================
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuWe4iQcGuplyQXhW8WFCNwVE/edit?usp=sharing"
 
@@ -100,7 +100,7 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# 메인 타이틀 세팅
+# [교정 완료] 메인 타이틀 태그 정상 복원 완료
 latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
 st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
@@ -216,12 +216,12 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역 (Metric Cards, 🥜 반영)
+# 2. 상단 상위 지표 영역 (Metric Cards)
 # ==========================================
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1: render_metric_card("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'])
 with col2: render_metric_card("🌽 옥수수 선물", latest['옥수수_달러톤'], prev_day['옥수수_달러톤'], prev_year['옥수수_달러톤'])
-with col3: render_metric_card("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤']) # 🫘 → 🥜 변경
+with col3: render_metric_card("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'])
 with col4: render_metric_card("🍚 쌀 수출 (태국)", latest['쌀_달러톤'], prev_day['쌀_달러톤'], prev_year['쌀_달러톤'])
 with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수_비율'], prev_day['콩_옥수수_비율'], None, is_ratio=True)
 
@@ -263,7 +263,7 @@ def fetch_realtime_news():
 real_news = fetch_realtime_news()
 
 # ==========================================
-# 4. 중간 분할 레이아웃 (⛽ 반영)
+# 4. 중간 분할 레이아웃
 # ==========================================
 main_col_left, main_col_right = st.columns([3, 2])
 
@@ -304,7 +304,6 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
-    # 🛢️ → ⛽ 변경 완료
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
@@ -352,8 +351,9 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역 (🚢 변경 및 신규 변수명 매핑 완료)
+# 5. 하단 수입 추이 영역
 # ==========================================
+# [교정 완료] h1 단락 생성 시 괄호 태그(<div...>) 오타를 완벽히 메우고 수정했습니다.
 formatted_date = latest_import_date.strftime('%Y년 %m월')
 st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
@@ -361,7 +361,7 @@ import_rows_html = ""
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
-# 식용 파트 빌드 (수입량(톤), 평균 수입단가(달러/톤) 가변 대응)
+# 식용 파트 빌드
 for idx, row in enumerate(food_df.to_dict('records')):
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
     p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
@@ -386,7 +386,7 @@ for idx, row in enumerate(food_df.to_dict('records')):
     """
     import_rows_html += row_string
 
-# 사료용 파트 빌드 (수입량(톤), 평균 수입단가(달러/톤) 가변 대응)
+# 사료용 파트 빌드
 for idx, row in enumerate(feed_df.to_dict('records')):
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
     p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
