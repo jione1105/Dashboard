@@ -279,7 +279,6 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
-    # [수정 완료] '당일 가격' 항목을 '당일 추이'로 전면 교정 완료
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
@@ -327,7 +326,7 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역 (수입단가 기반 지능형 내부 연산 모델)
+# 5. 하단 수입 추이 영역
 # ==========================================
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max()
@@ -335,19 +334,20 @@ latest_import_date = df_import_raw['날짜'].max()
 formatted_date = latest_import_date.strftime('%Y년 %m월')
 st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
-# 시계열 수입단가 연산 백업 피벗 생성
+# 시계열 단가 수집 피벗 백업 생성
 df_clean_imp = df_import_raw.copy()
 df_clean_imp['평균 수입단가(달러/톤)'] = df_clean_imp['평균 수입단가(달러/톤)'].apply(clean_numeric)
 pivot_price = df_clean_imp.pivot_table(index='날짜', columns='품목명', values='평균 수입단가(달러/톤)', aggfunc='first')
 
-# 최신 수집월 데이터 분리
+# 당월 식용 / 사료용 분리
 df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date].copy()
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
-html_table_rows = []
+# [대결정] 오염을 원천 차단하기 위해 중괄호 충돌이 있는 f-string 대신 문자열 덧셈 배열 구조로 전면 교정
+import_rows_html = ""
 
-# --- 식용 행 데이터 조립 및 직접 연산 처리 ---
+# --- 식용 데이터 연산 루프 ---
 for idx, row in enumerate(food_df.to_dict('records')):
     item_name = sanitize_string(row.get('품목명', ''))
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
@@ -356,7 +356,6 @@ for idx, row in enumerate(food_df.to_dict('records')):
     weight_display = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
     price_display = f"${p_curr:.2f}" if p_curr > 0 else "N/A"
     
-    # 시계열 단가 추적 연산
     p_prev_month, p_prev_year = 0.0, 0.0
     if item_name in pivot_price.columns:
         past_months = pivot_price.index[pivot_price.index < latest_import_date]
@@ -372,20 +371,20 @@ for idx, row in enumerate(food_df.to_dict('records')):
     td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
     td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
-    category_td = '<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else ''
-    
-    html_table_rows.append(f"""
-    <tr>
-        {category_td}
-        <td class="table-text-left">{item_name}</td>
-        <td>{weight_display}</td>
-        <td>{price_display}</td>
-        <td>{td_month_chg}</td>
-        <td>{td_year_chg}</td>
-    </tr>
-    """)
+    # 중괄호{} 내부 조건문을 분리하여 문자열 결합 구조로 문법 붕괴 차단
+    category_td = ""
+    if idx == 0:
+        category_td = '<td class="category-cell-style" rowspan="4">식용</td>'
+        
+    import_rows_html += "<tr>" + category_td + \
+                        "<td class='table-text-left'>" + item_name + "</td>" + \
+                        "<td>" + weight_display + "</td>" + \
+                        "<td>" + price_display + "</td>" + \
+                        "<td>" + td_month_chg + "</td>" + \
+                        "<td>" + td_year_chg + "</td>" + \
+                        "</tr>"
 
-# --- 사료용 행 데이터 조립 및 직접 연산 처리 ---
+# --- 사료용 데이터 연산 루프 ---
 for idx, row in enumerate(feed_df.to_dict('records')):
     item_name = sanitize_string(row.get('품목명', ''))
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
@@ -409,21 +408,20 @@ for idx, row in enumerate(feed_df.to_dict('records')):
     td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
     td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
-    category_td = '<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else ''
-    
-    html_table_rows.append(f"""
-    <tr>
-        {category_td}
-        <td class="table-text-left">{item_name}</td>
-        <td>{weight_display}</td>
-        <td>{price_display}</td>
-        <td>{td_month_chg}</td>
-        <td>{td_year_chg}</td>
-    </tr>
-    """)
+    category_td = ""
+    if idx == 0:
+        category_td = '<td class="category-cell-style" rowspan="3">사료용</td>'
+        
+    import_rows_html += "<tr>" + category_td + \
+                        "<td class='table-text-left'>" + item_name + "</td>" + \
+                        "<td>" + weight_display + "</td>" + \
+                        "<td>" + price_display + "</td>" + \
+                        "<td>" + td_month_chg + "</td>" + \
+                        "<td>" + td_year_chg + "</td>" + \
+                        "</tr>"
 
-# [수정 완료] 요청하신 헤더 컬럼명 규격 확정 및 단일 통짜 조립식 코딩 기법 적용 완료
-import_table_html = f"""
+# 거시지표 테이블 구현부와 완벽히 동일하게 일관된 명형 통짜 문자열로 마감 (CSS 중괄호 분리 해결)
+import_table_html = """
 <table class="dashboard-table">
     <thead>
         <tr>
@@ -436,7 +434,7 @@ import_table_html = f"""
         </tr>
     </thead>
     <tbody>
-        {"".join(html_table_rows)}
+""" + import_rows_html + """
     </tbody>
 </table>
 """
