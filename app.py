@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote  # 한글 인코딩을 위한 라이브러리
 
 # ==========================================
 # 0. 페이지 기본 설정 및 스타일 정의
@@ -15,8 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# [수정사항] 2번 요건: 상단 카드 수치 뒤 단위 폰트 크기를 (적정:2.50) 수준(12px, Regular)으로 축소하는 CSS 정의
-# [수정사항] 3번 요건: 증감 상태에 따른 텍스트 색상(상승:빨강, 하락:파랑, 보합/정보없음:회색) 매핑 클래스 추가
+# UI 및 컬러 마크업 규격 CSS 정의
 st.markdown("""
     <style>
     .reportview-container, .main { background-color: #f1f5f9; }
@@ -36,12 +35,11 @@ st.markdown("""
         background-color: #fffbeb;
     }
     
-    /* 폰트 크기 축소 밸런스 조정 */
     .metric-val-text { font-size: 19px; font-weight: bold; color: #0f172a; }
     .unit-text { font-size: 12px; font-weight: normal; color: #64748b; margin-left: 2px; }
     .sub-text { font-size: 12px; font-weight: normal; color: #b45309; margin-left: 4px; }
     
-    /* 동적 컬러 마크업 규칙 */
+    /* 동적 컬러 텍스트 양식 */
     .color-up { color: #dc2626; font-weight: bold; }
     .color-down { color: #2563eb; font-weight: bold; }
     .color-flat { color: #64748b; font-weight: bold; }
@@ -90,7 +88,7 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# [수정사항] 1번 요건: 가중치 비율 전면 조정 (밀 32%, 옥수수 28%, 콩 38%, 쌀 2%)
+# 가중치 비율 세팅 (밀 32%, 옥수수 28%, 콩 38%, 쌀 2%)
 df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'].fillna(0) * 0.32) + \
                           (df_macro['옥수수_달러톤'].fillna(0) * 0.28) + \
                           (df_macro['콩_달러톤'].fillna(0) * 0.38) + \
@@ -99,7 +97,7 @@ df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'].fillna(
 all_nan_mask = df_macro[['밀_달러톤', '옥수수_달러톤', '콩_달러톤', '쌀_달러톤']].isna().all(axis=1)
 df_macro.loc[all_nan_mask, '국제곡물_선물가격지수'] = None
 
-# 수입 추이 데이터 추출
+# 수입 추이 데이터 필터링
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max()
 df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date].copy()
@@ -108,7 +106,6 @@ df_import_final = df_import_filtered.drop(columns=['날짜'])
 # ==========================================
 # 수치 판정 및 HTML 변환 유틸리티 함수
 # ==========================================
-# [수정사항] 3번 요건: 증감 방향에 따라 다른 색상 태그를 반환하는 스크립트 구조화
 def get_colored_chg_html(curr, base):
     if pd.isna(curr) or pd.isna(base) or base == 0:
         return '<span class="color-flat">-</span>'
@@ -155,9 +152,8 @@ def format_macro_val(val, prefix="", suffix=""):
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역 (Metric Cards 연동)
+# 2. 상단 상위 지표 영역 (Metric Cards)
 # ==========================================
-# [수정사항] 2번 요건: 단위를 값 내부 HTML 렌더링에 결합하여 폰트 크기를 통제구축 처리
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
@@ -174,13 +170,16 @@ with col5:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. 실시간 뉴스 크롤링 연동
+# 3. 실시간 뉴스 크롤링 연동 ([해결책] 한글 쿼리 인코딩 적용)
 # ==========================================
 @st.cache_data(ttl=600)
 def fetch_realtime_news():
     news_items = []
     try:
-        url = "https://news.google.com/rss/search?q=국제곡물+WASDE&hl=ko&gl=KR&ceid=KR:ko"
+        # [수정] 뉴스 검색어 주소창의 한글 파트를 quote()로 묶어 아스키 에러 완전 방지
+        query_encoded = quote("국제곡물 WASDE")
+        url = f"https://news.google.com/rss/search?q={query_encoded}&hl=ko&gl=KR&ceid=KR:ko"
+        
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.content, features="xml")
         articles = soup.findAll("item")[:3]
@@ -220,8 +219,7 @@ with main_col_left:
     if filtered_df[chart_target].isna().all():
         st.warning("선택한 기간 내에 분석할 시황 데이터가 엑셀에 존재하지 않습니다.")
     else:
-        # [수정사항] 4번 요건: 보간법(Linear Interpolation)을 선제적으로 실행하여 데이터 파편화 현상 제거 후 5MA 연산
-        # 일자별 가격이 누락되어 있더라도 앞뒤 데이터를 선형으로 이어 결측 영역을 완벽하게 메웁니다.
+        # 선형 보간법(Linear Interpolation) 적용 후 5MA 연산 (결측 단절 방지)
         filtered_df[chart_target] = filtered_df[chart_target].interpolate(method='linear', limit_direction='both')
         filtered_df['5MA'] = filtered_df[chart_target].rolling(window=5).mean()
         
@@ -243,7 +241,7 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
-    # [수정사항] 3번 요건: 거시지표 테이블의 증감률 란에도 컬러 하이라이팅 HTML을 연동하기 위해 데이터 구조를 유연하게 맵핑
+    # 거시지표 동적 컬러 마크업 연동 html 테이블 구조화
     macro_table_html = f"""
     <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:center;">
         <thead style="background-color:#f8fafc; color:#475569;">
