@@ -49,7 +49,7 @@ st.markdown("""
     .news-tag { background-color: #f1f5f9; color: #475569; font-weight: bold; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-right: 6px; display: inline-block; }
     .news-item { margin-bottom: 10px; font-size: 11px; list-style-type: none; color: #1e293b; }
     
-    /* 테이블 통합 커스텀 CSS (맑은 고딕 명시 및 전체 가운데 정렬 기본) */
+    /* 테이블 통합 커스텀 CSS */
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
     .dashboard-table th { padding:8px; font-weight:bold; border-bottom:1px solid #cbd5e1; text-align:center; }
@@ -61,9 +61,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 구글 스프레드시트(엑셀) 연동 설정
+# 1. 구글 스프레드시트(엑셀) 연동 설정 (제공 주소 고정 적용)
 # ==========================================
-# 본인의 구글 스프레드시트 주소를 아래에 바르게 붙여넣으세요.
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuWe4iQcGuplyQXhW8WFCNwVE/edit?usp=sharing"
 
 @st.cache_data(ttl=30)
@@ -101,11 +100,11 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# [수정 복원 완료] 상단 마크업 괄호 태그 규칙(<div ...>)을 안전하게 닫아 차단벽 형성
+# 메인 타이틀 세팅
 latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
 st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
-# 가중치 복합 지수 연산 (밀 32%, 옥수수 28%, 콩 38%, 쌀 2%)
+# 가중치 복합 지수용 수치 정제 함수
 def clean_numeric(val):
     if pd.isna(val): return 0.0
     try:
@@ -130,11 +129,15 @@ df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date
 # ==========================================
 # 수치 판정 및 HTML 변환 유틸리티 함수
 # ==========================================
+def sanitize_string(val):
+    if pd.isna(val): return ""
+    return str(val).replace('\\', '').replace('"', '').replace("'", "").strip()
+
 def get_colored_chg_html(curr, base, is_pct_string=False):
     try:
         if is_pct_string:
-            val_str = str(curr).strip()
-            if pd.isna(curr) or val_str.lower() in ['n/a', '-', '']:
+            val_str = sanitize_string(curr)
+            if val_str.lower() in ['n/a', '-', '', 'none']:
                 return '<span class="color-flat">-</span>'
             
             clean_str = val_str.replace('%', '').replace('▲', '').replace('▼', '').replace('+', '').strip()
@@ -213,12 +216,12 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역 (Metric Cards)
+# 2. 상단 상위 지표 영역 (Metric Cards, 🥜 반영)
 # ==========================================
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1: render_metric_card("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'])
 with col2: render_metric_card("🌽 옥수수 선물", latest['옥수수_달러톤'], prev_day['옥수수_달러톤'], prev_year['옥수수_달러톤'])
-with col3: render_metric_card("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'])
+with col3: render_metric_card("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤']) # 🫘 → 🥜 변경
 with col4: render_metric_card("🍚 쌀 수출 (태국)", latest['쌀_달러톤'], prev_day['쌀_달러톤'], prev_year['쌀_달러톤'])
 with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수_비율'], prev_day['콩_옥수수_비율'], None, is_ratio=True)
 
@@ -260,7 +263,7 @@ def fetch_realtime_news():
 real_news = fetch_realtime_news()
 
 # ==========================================
-# 4. 중간 분할 레이아웃
+# 4. 중간 분할 레이아웃 (⛽ 반영)
 # ==========================================
 main_col_left, main_col_right = st.columns([3, 2])
 
@@ -301,6 +304,7 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
+    # 🛢️ → ⛽ 변경 완료
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
@@ -348,7 +352,7 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역
+# 5. 하단 수입 추이 영역 (🚢 변경 및 신규 변수명 매핑 완료)
 # ==========================================
 formatted_date = latest_import_date.strftime('%Y년 %m월')
 st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
@@ -357,7 +361,7 @@ import_rows_html = ""
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
-# 식용 파트 빌드
+# 식용 파트 빌드 (수입량(톤), 평균 수입단가(달러/톤) 가변 대응)
 for idx, row in enumerate(food_df.to_dict('records')):
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
     p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
@@ -368,10 +372,12 @@ for idx, row in enumerate(food_df.to_dict('records')):
     td_month_chg = get_colored_chg_html(row.get('전월 대비 증감'), None, is_pct_string=True)
     td_year_chg = get_colored_chg_html(row.get('전년 대비 증감'), None, is_pct_string=True)
     
+    item_name = sanitize_string(row.get('품목명', ''))
+    
     row_string = f"""
     <tr>
         { f'<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else '' }
-        <td class="table-text-left">{row.get('품목명', '')}</td>
+        <td class="table-text-left">{item_name}</td>
         <td>{weight_val}</td>
         <td>{price_val}</td>
         <td>{td_month_chg}</td>
@@ -380,7 +386,7 @@ for idx, row in enumerate(food_df.to_dict('records')):
     """
     import_rows_html += row_string
 
-# 사료용 파트 빌드
+# 사료용 파트 빌드 (수입량(톤), 평균 수입단가(달러/톤) 가변 대응)
 for idx, row in enumerate(feed_df.to_dict('records')):
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
     p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
@@ -391,10 +397,12 @@ for idx, row in enumerate(feed_df.to_dict('records')):
     td_month_chg = get_colored_chg_html(row.get('전월 대비 증감'), None, is_pct_string=True)
     td_year_chg = get_colored_chg_html(row.get('전년 대비 증감'), None, is_pct_string=True)
     
+    item_name = sanitize_string(row.get('품목명', ''))
+    
     row_string = f"""
     <tr>
         { f'<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else '' }
-        <td class="table-text-left">{row.get('품목명', '')}</td>
+        <td class="table-text-left">{item_name}</td>
         <td>{weight_val}</td>
         <td>{price_val}</td>
         <td>{td_month_chg}</td>
@@ -410,7 +418,7 @@ import_table_html = f"""
             <th style="width:10%;">구분</th>
             <th style="width:18%;">품목명</th>
             <th style="width:18%;">수입량(톤)</th>
-            <th style="width:22%;">평균 수입단가(달러/톤)</th>
+            <th style="width:22%;">평균 수입단가<br>(달러/톤)</th>
             <th style="width:16%;">전월 대비<br>증감</th>
             <th style="width:16%;">전년 대비<br>증감</th>
         </tr>
