@@ -104,7 +104,7 @@ with col2:
     st.metric(label="🌽 옥수수 선물", value=f"{int(latest['옥수수_달러톤'])} 달러/톤", 
               delta=f"{calc_chg(latest['옥수수_달러톤'], prev_day['옥수수_달러톤']):+.1f}% (전일) | {calc_chg(latest['옥수수_달러톤'], prev_year['옥수수_달러톤']):+.1f}% (전년)", delta_color="inverse")
 with col3:
-    st.metric(label="🫘 콩 선물", value=f"{int(latest['콩_달러톤'])} 달러/톤", 
+    st.metric(label="🥜 콩 선물", value=f"{int(latest['콩_달러톤'])} 달러/톤", 
               delta=f"{calc_chg(latest['콩_달러톤'], prev_day['콩_달러톤']):+.1f}% (전일) | {calc_chg(latest['콩_달러톤'], prev_year['콩_달러톤']):+.1f}% (전년)", delta_color="inverse")
 with col4:
     st.metric(label="🍚 쌀 수출 (태국)", value=f"{int(latest['쌀_달러톤'])} 달러/톤", 
