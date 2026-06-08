@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# UI 및 컬러 마크업 규격 CSS 정의
+# UI 및 테이블 폰트 통합 CSS 정의 (맑은 고딕 세팅)
 st.markdown("""
     <style>
     .reportview-container, .main { background-color: #f1f5f9; }
@@ -41,7 +41,6 @@ st.markdown("""
     .unit-text { font-size: 12px; font-weight: normal; color: #64748b; margin-left: 2px; }
     .sub-text { font-size: 12px; font-weight: normal; color: #b45309; margin-left: 4px; }
     
-    /* 동적 컬러 텍스트 및 테이블 공통 폰트 지정 */
     .color-up { color: #dc2626; font-weight: bold; }
     .color-down { color: #2563eb; font-weight: bold; }
     .color-flat { color: #64748b; font-weight: bold; }
@@ -49,7 +48,6 @@ st.markdown("""
     .news-tag { background-color: #f1f5f9; color: #475569; font-weight: bold; padding: 2px 6px; border-radius: 3px; font-size: 11px; margin-right: 6px; display: inline-block; }
     .news-item { margin-bottom: 10px; font-size: 11px; list-style-type: none; color: #1e293b; }
     
-    /* 테이블 통합 커스텀 CSS */
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
     .dashboard-table th { padding:8px; font-weight:bold; border-bottom:1px solid #cbd5e1; text-align:center !important; }
@@ -100,11 +98,10 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# 메인 타이틀 세팅
+# 메인 타이틀 업데이트 날짜 연동
 latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
 st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
-# 가중치 복합 지수용 수치 정제 함수
 def clean_numeric(val):
     if pd.isna(val): return 0.0
     try:
@@ -282,12 +279,13 @@ with main_col_right:
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
     
+    # [수정 완료] '당일 가격' 항목을 '당일 추이'로 전면 교정 완료
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
             <tr>
                 <th style="width:35%;">주요 지표</th>
-                <th style="width:25%;">당일 가격</th>
+                <th style="width:25%;">당일 추이</th>
                 <th style="width:20%;">전일 대비<br>증감</th>
                 <th style="width:20%;">전년 대비<br>증감</th>
             </tr>
@@ -329,133 +327,116 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역 (지능형 내부 시계열 연산 추가)
+# 5. 하단 수입 추이 영역 (수입단가 기반 지능형 내부 연산 모델)
 # ==========================================
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max()
 
-# 대시보드 타이틀 날짜 노출
 formatted_date = latest_import_date.strftime('%Y년 %m월')
 st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
-# 최신 데이터 필터링 전, 전월 및 전년 실적 매핑을 위한 피벗 테이블 백업 생성
+# 시계열 수입단가 연산 백업 피벗 생성
 df_clean_imp = df_import_raw.copy()
-df_clean_imp['수입량(톤)'] = df_clean_imp['수입량(톤)'].apply(clean_numeric)
+df_clean_imp['평균 수입단가(달러/톤)'] = df_clean_imp['평균 수입단가(달러/톤)'].apply(clean_numeric)
+pivot_price = df_clean_imp.pivot_table(index='날짜', columns='품목명', values='평균 수입단가(달러/톤)', aggfunc='first')
 
-# 품목별/날짜별 수입량 매핑 테이블 생성 (과거 행 추적용)
-pivot_imp = df_clean_imp.pivot_table(index='날짜', columns='품목명', values='수입량(톤)', aggfunc='first')
-
-# 당월 대상 데이터 슬라이싱
+# 최신 수집월 데이터 분리
 df_import_filtered = df_import_raw[df_import_raw['날짜'] == latest_import_date].copy()
 food_df = df_import_filtered[df_import_filtered['구분'] == '식용']
 feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
-import_rows_html = ""
+html_table_rows = []
 
-# --- 식용 데이터 연산 및 HTML 빌드 ---
+# --- 식용 행 데이터 조립 및 직접 연산 처리 ---
 for idx, row in enumerate(food_df.to_dict('records')):
     item_name = sanitize_string(row.get('품목명', ''))
-    w_curr = clean_numeric(row.get('수입량(톤)', 0))
-    p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
+    w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
+    p_curr = clean_numeric(row.get('평균 수입단가(달러/톤)', 0))
     
-    weight_display = f"{int(w_curr):,}" if w_curr > 0 else "N/A"
-    price_display = f"${float(p_clean):.2f}" if p_clean.lower() != 'n/a' else "N/A"
+    weight_display = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
+    price_display = f"${p_curr:.2f}" if p_curr > 0 else "N/A"
     
-    # [신규 기능] 코드 내부에서 직접 이전 날짜 행을 추적하여 전월/전년 수입량 로드
-    w_prev_month = 0.0
-    w_prev_year = 0.0
-    
-    if item_name in pivot_imp.columns:
-        # 전월(직전 수집월) 데이터 추적
-        past_months = pivot_imp.index[pivot_imp.index < latest_import_date]
-        if len(past_months) > 0:
-            w_prev_month = pivot_imp.loc[past_months[-1], item_name]
-            
-        # 전년(정확히 12달 전 혹은 유관 과거 데이터) 추적
-        target_year = latest_import_date.year - 1
-        target_month = latest_import_date.month
-        past_years = pivot_imp.index[(pivot_imp.index.year == target_year) & (pivot_imp.index.month == target_month)]
-        if len(past_years) > 0:
-            w_prev_year = pivot_imp.loc[past_years[0], item_name]
+    # 시계열 단가 추적 연산
+    p_prev_month, p_prev_year = 0.0, 0.0
+    if item_name in pivot_price.columns:
+        past_months = pivot_price.index[pivot_price.index < latest_import_date]
+        if len(past_months) > 0: p_prev_month = pivot_price.loc[past_months[-1], item_name]
+        
+        target_year, target_month = latest_import_date.year - 1, latest_import_date.month
+        past_years = pivot_price.index[(pivot_price.index.year == target_year) & (pivot_price.index.month == target_month)]
+        if len(past_years) > 0: p_prev_year = pivot_price.loc[past_years[0], item_name]
         else:
-            # 1년 전 동월 데이터가 없을 경우 가용한 1년 전 근접월 자동 스캔 폴백
-            fallback_past = pivot_imp.index[pivot_imp.index <= (latest_import_date - pd.Timedelta(days=365))]
-            if len(fallback_past) > 0:
-                w_prev_year = pivot_imp.loc[fallback_past[-1], item_name]
+            fallback_past = pivot_price.index[pivot_price.index <= (latest_import_date - pd.Timedelta(days=365))]
+            if len(fallback_past) > 0: p_prev_year = pivot_price.loc[fallback_past[-1], item_name]
 
-    # 실시간 증감률 연산 및 색상 태그 매핑
-    td_month_chg = get_colored_chg_html(w_curr, w_prev_month)
-    td_year_chg = get_colored_chg_html(w_curr, w_prev_year)
+    td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
+    td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
-    row_string = f"""
+    category_td = '<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else ''
+    
+    html_table_rows.append(f"""
     <tr>
-        { f'<td class="category-cell-style" rowspan="4">식용</td>' if idx == 0 else '' }
+        {category_td}
         <td class="table-text-left">{item_name}</td>
         <td>{weight_display}</td>
         <td>{price_display}</td>
         <td>{td_month_chg}</td>
         <td>{td_year_chg}</td>
     </tr>
-    """
-    import_rows_html += row_string
+    """)
 
-# --- 사료용 데이터 연산 및 HTML 빌드 ---
+# --- 사료용 행 데이터 조립 및 직접 연산 처리 ---
 for idx, row in enumerate(feed_df.to_dict('records')):
     item_name = sanitize_string(row.get('품목명', ''))
-    w_curr = clean_numeric(row.get('수입량(톤)', 0))
-    p_clean = str(row.get('평균 수입단가(달러/톤)', 'N/A')).replace('$', '').replace(',', '').strip()
+    w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
+    p_curr = clean_numeric(row.get('평균 수입단가(달러/톤)', 0))
     
-    weight_display = f"{int(w_curr):,}" if w_curr > 0 else "N/A"
-    price_display = f"${float(p_clean):.2f}" if p_clean.lower() != 'n/a' else "N/A"
+    weight_display = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
+    price_display = f"${p_curr:.2f}" if p_curr > 0 else "N/A"
     
-    w_prev_month = 0.0
-    w_prev_year = 0.0
-    
-    if item_name in pivot_imp.columns:
-        past_months = pivot_imp.index[pivot_imp.index < latest_import_date]
-        if len(past_months) > 0:
-            w_prev_month = pivot_imp.loc[past_months[-1], item_name]
-            
-        target_year = latest_import_date.year - 1
-        target_month = latest_import_date.month
-        past_years = pivot_imp.index[(pivot_imp.index.year == target_year) & (pivot_imp.index.month == target_month)]
-        if len(past_years) > 0:
-            w_prev_year = pivot_imp.loc[past_years[0], item_name]
+    p_prev_month, p_prev_year = 0.0, 0.0
+    if item_name in pivot_price.columns:
+        past_months = pivot_price.index[pivot_price.index < latest_import_date]
+        if len(past_months) > 0: p_prev_month = pivot_price.loc[past_months[-1], item_name]
+        
+        target_year, target_month = latest_import_date.year - 1, latest_import_date.month
+        past_years = pivot_price.index[(pivot_price.index.year == target_year) & (pivot_price.index.month == target_month)]
+        if len(past_years) > 0: p_prev_year = pivot_price.loc[past_years[0], item_name]
         else:
-            fallback_past = pivot_imp.index[pivot_imp.index <= (latest_import_date - pd.Timedelta(days=365))]
-            if len(fallback_past) > 0:
-                w_prev_year = pivot_imp.loc[fallback_past[-1], item_name]
+            fallback_past = pivot_price.index[pivot_price.index <= (latest_import_date - pd.Timedelta(days=365))]
+            if len(fallback_past) > 0: p_prev_year = pivot_price.loc[fallback_past[-1], item_name]
 
-    td_month_chg = get_colored_chg_html(w_curr, w_prev_month)
-    td_year_chg = get_colored_chg_html(w_curr, w_prev_year)
+    td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
+    td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
-    row_string = f"""
+    category_td = '<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else ''
+    
+    html_table_rows.append(f"""
     <tr>
-        { f'<td class="category-cell-style" rowspan="3">사료용</td>' if idx == 0 else '' }
+        {category_td}
         <td class="table-text-left">{item_name}</td>
         <td>{weight_display}</td>
         <td>{price_display}</td>
         <td>{td_month_chg}</td>
         <td>{td_year_chg}</td>
     </tr>
-    """
-    import_rows_html += row_string
+    """)
 
-# 문자열 파괴 현상을 근본 방해하기 위한 HTML 안전 병합
-import_table_html = """
+# [수정 완료] 요청하신 헤더 컬럼명 규격 확정 및 단일 통짜 조립식 코딩 기법 적용 완료
+import_table_html = f"""
 <table class="dashboard-table">
     <thead>
         <tr>
             <th style="width:10%;">구분</th>
             <th style="width:18%;">품목명</th>
             <th style="width:18%;">수입량(톤)</th>
-            <th style="width:22%;">평균 수입단가<br>(달러/톤)</th>
-            <th style="width:16%;">전월 대비<br>수입량 증감</th>
-            <th style="width:16%;">전년 동월 대비<br>수입량 증감</th>
+            <th style="width:22%;">수입단가(달러/톤)</th>
+            <th style="width:16%;">전월 대비 증감률</th>
+            <th style="width:16%;">전년 대비 증감률</th>
         </tr>
     </thead>
     <tbody>
-""" + import_rows_html + """
+        {"".join(html_table_rows)}
     </tbody>
 </table>
 """
