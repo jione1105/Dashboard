@@ -62,8 +62,9 @@ st.markdown("""
     .color-down { color: #2563eb; font-weight: bold; }
     .color-flat { color: #64748b; font-weight: bold; }
     
-    .news-tag { background-color: #e2e8f0; color: #0f172a; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; border-left: 3px solid #1e3a8a; }
-    .news-item { margin-bottom: 12px; font-size: 12px; list-style-type: none; color: #1e293b; line-height: 1.6; }
+    /* [교정] 주요 뉴스 영역 가시성 및 텍스트 콤팩트 규격화 설정 */
+    .news-tag { background-color: #e2e8f0; color: #0f172a; font-weight: bold; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; border-left: 3px solid #1e3a8a; }
+    .news-item { margin-bottom: 10px; font-size: 11px; list-style-type: none; color: #1e293b; line-height: 1.4; }
     
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
@@ -194,18 +195,6 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역
-# ==========================================
-col1, col2, col3, col4, col5 = st.columns(5)
-with col1: render_metric_card("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'])
-with col2: render_metric_card("🌽 옥수수 선물", latest['옥수수_달러톤'], prev_day['옥수수_달러톤'], prev_year['옥수수_달러톤'])
-with col3: render_metric_card("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'])
-with col4: render_metric_card("🍚 쌀 수출 (태국)", latest['쌀_달러톤'], prev_day['쌀_달러톤'], prev_year['쌀_달러톤'])
-with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수_비율'], prev_day['콩_옥수수_비율'], None, is_ratio=True)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ==========================================
 # 3. 주요 곡물 일일 시황 영역
 # ==========================================
 try:
@@ -241,7 +230,6 @@ st.markdown(f"""
 def translate_headline_to_ko_raw(text):
     t = text.lower()
     
-    # 외신 출처 꼬리표 구별용
     source_tail = "로이터📑"
     if "bloomberg" in t: source_tail = "블룸버그📑"
     
@@ -282,7 +270,6 @@ def fetch_translated_specialized_news():
         {"tag": "관련 정책", "q": "(grain export policy OR subsidy OR trade tariff OR restriction) (reuters OR bloomberg)"}
     ]
     
-    # 하드코딩 백업 풀데이터 세팅
     fallbacks = {
         "국제곡물": [
             "미 주산지 기후 호조 및 남미 공급 물량 증가로 소맥과 옥수수 가격 하방 압력 지속(블룸버그📑)",
@@ -324,18 +311,16 @@ def fetch_translated_specialized_news():
                 
                 parsed_sentence = translate_headline_to_ko_raw(title)
                 sentences.append(parsed_sentence)
-                if len(sentences) >= 2: # 최대 2개 외신 결합
+                if len(sentences) >= 2:
                     break
                     
             if len(sentences) == 0:
                 raise Exception()
             
-            # 뉴스 요약 문장 간 컴마(,)로 이어 붙여 한 줄로 병합
             combined_content = ", ".join(sentences)
             merged_news_list.append({"tag": tag_name, "content": combined_content})
             
         except:
-            # 예외시 폴백 가상의 통합본 전달
             combined_content = ", ".join(fallbacks[tag_name])
             merged_news_list.append({"tag": tag_name, "content": combined_content})
                 
