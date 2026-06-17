@@ -63,7 +63,7 @@ st.markdown("""
     .color-flat { color: #64748b; font-weight: bold; }
     
     .news-tag { background-color: #e2e8f0; color: #0f172a; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; border-left: 3px solid #1e3a8a; }
-    .news-item { margin-bottom: 12px; font-size: 12px; list-style-type: none; color: #1e293b; line-height: 1.5; }
+    .news-item { margin-bottom: 12px; font-size: 12px; list-style-type: none; color: #1e293b; line-height: 1.6; }
     
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
@@ -236,16 +236,15 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. 5대 전문 업무 분야 실시간 외신 취합 및 컨텍스트 요약 엔진
+# 4. 외신 결합형 텍스트 요약 및 단일 태그 축약 엔진
 # ==========================================
-def translate_headline_to_ko(text, tag):
+def translate_headline_to_ko_raw(text):
     t = text.lower()
     
-    # 1. 행위자(출처) 판별 후 헤더 태그 생성
-    source_prefix = "로이터: "
-    if "bloomberg" in t: source_prefix = "블룸버그: "
+    # 외신 출처 꼬리표 구별용
+    source_tail = "로이터📑"
+    if "bloomberg" in t: source_tail = "블룸버그📑"
     
-    # 2. 문맥 파악을 위한 특수 주요 핵심 동사/명사 변환 로직 (누가 무엇을 유도했는지 명확화)
     if "check" in t or "scrutinize" in t or "monitor" in t:
         action = "관련 수급 현황 및 공급망 안정성 실태 점검 착수"
     elif "surge" in t or "jump" in t or "spike" in t:
@@ -259,7 +258,6 @@ def translate_headline_to_ko(text, tag):
     else:
         action = "지정학적 리스크 및 기후 변화 여파 영향권 지속 분석"
 
-    # 3. 주요 도메인 타겟 품목 고도화 매핑
     if "soybean" in t: item = "글로벌 대두(콩) 시장이 "
     elif "wheat" in t: item = "국제 소맥(밀) 공급망이 "
     elif "corn" in t or "maize" in t: item = "주산지 옥수수 선물 가격이 "
@@ -272,16 +270,10 @@ def translate_headline_to_ko(text, tag):
     elif "subsidy" in t or "tariff" in t: item = "주요 생산국의 곡물 수출 관세 및 보조금 정책이 "
     else: item = "해당 분야 원자재 동향이 "
 
-    # 4. 정밀 맥락 결합 조합형 문장 생성
-    combined_headline = f"{source_prefix}{item}{action}"
-    
-    # 5. 특수문자 정제
-    combined_headline = re.sub(r'[^가-힣0-9a-zA-Z\s\(\)\/,\.\-\%\·\:\,\"\']', '', combined_headline).strip()
-    return combined_headline
+    return f"{item}{action}({source_tail})"
 
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
-    curated_news = []
     categories = [
         {"tag": "국제곡물", "q": "(wheat OR corn OR soybean OR rice OR sugar OR 'palm oil') (reuters OR bloomberg)"},
         {"tag": "원자재", "q": "('crude oil' OR 'natural gas' OR urea OR ammonia) (reuters OR bloomberg)"},
@@ -290,56 +282,64 @@ def fetch_translated_specialized_news():
         {"tag": "관련 정책", "q": "(grain export policy OR subsidy OR trade tariff OR restriction) (reuters OR bloomberg)"}
     ]
     
+    # 하드코딩 백업 풀데이터 세팅
+    fallbacks = {
+        "국제곡물": [
+            "미 주산지 기후 호조 및 남미 공급 물량 증가로 소맥과 옥수수 가격 하방 압력 지속(블룸버그📑)",
+            "남미 아르헨티나 대두 수확 진척률 발표에 따른 글로벌 공급 유동성 점검 보고서 발표(로이터📑)"
+        ],
+        "원자재": [
+            "글로벌 비료용 요소 공급망 가격 불안 고조에 따라 주요 관계국 합동 수급 실태 긴급 점검 착수(로이터📑)",
+            "중동 지정학적 공급망 리스크 완화 여파로 국제 유가 배럴당 78달러선 하향 보합 안정세(블룸버그📑)"
+        ],
+        "거시지표": [
+            "미 연준의 고금리 장기화 기조 재확인 속 달러인덱스 강보합 추이 지속(로이터📑)",
+            "원/달러 환율 금융시장 변동성 확대 우려에 따른 정책 당국 유동성 모니터링 강화(블룸버그📑)"
+        ],
+        "해상물류": [
+            "파나마 운하 통항 제한 추가 완화 소식에 주요 벌크선 해상운임(BDI) 안정세 기록(블룸버그📑)",
+            "주요 항만 적체 현상 해소 흐름 속 글로벌 컨테이너 물류 지체 여파 점검(로이터📑)"
+        ],
+        "관련 정책": [
+            "북미 주요 생산국의 신년 곡물 보조금 개편안 예고에 따른 무역 다변화 흐름 주시(로이터📑)",
+            "신흥국들의 자국 식량 안보 강화를 위한 농산물 수출 관세 인상 조치 모니터링(블룸버그📑)"
+        ]
+    }
+    
+    merged_news_list = []
+    
     for cat in categories:
+        tag_name = cat["tag"]
         try:
             url = f"https://news.google.com/rss/search?q={quote(cat['q'])}&hl=en&gl=US&ceid=US:en"
-            res = requests.get(url, timeout=6)
+            res = requests.get(url, timeout=5)
             soup = BeautifulSoup(res.content, features="xml")
             articles = soup.findAll("item")
             
-            collected_count = 0
+            sentences = []
             for article in articles:
                 title = article.title.text.split(" - ")[0]
                 if len(title) < 25 or any(k in title.lower() for k in ["weekly report", "how to"]): 
                     continue
                 
-                # 문맥 구조 분석형 변환 함수 적용
-                translated_title = translate_headline_to_ko(title, cat["tag"])
-                curated_news.append({"tag": cat["tag"], "content": translated_title})
-                
-                collected_count += 1
-                if collected_count >= 2:  # 탭별 단일 출처 한계를 깨고 서로 다른 기사 최대 2개까지 취합 허용
+                parsed_sentence = translate_headline_to_ko_raw(title)
+                sentences.append(parsed_sentence)
+                if len(sentences) >= 2: # 최대 2개 외신 결합
                     break
                     
-            if collected_count == 0: 
+            if len(sentences) == 0:
                 raise Exception()
+            
+            # 뉴스 요약 문장 간 컴마(,)로 이어 붙여 한 줄로 병합
+            combined_content = ", ".join(sentences)
+            merged_news_list.append({"tag": tag_name, "content": combined_content})
+            
         except:
-            fallbacks = {
-                "국제곡물": [
-                    "블룸버그: 미 주산지 기후 호조 및 남미 공급 물량 증가로 소맥·옥수수 선물 가격 하방 압력 지속",
-                    "로이터: 남미 아르헨티나 대두 수확 진척률 발표에 따른 글로벌 공급 유동성 점검 보고서 발표"
-                ],
-                "원자재": [
-                    "로이터: 글로벌 비료용 요소 공급망 가격 불안 고조에 따라 주요 관계국 합동 수급 실태 긴급 점검 착수",
-                    "블룸버그: 중동 지정학적 공급망 리스크 완화 여파로 국제 유가 배럴당 78달러선 하향 보합 안정세"
-                ],
-                "거시지표": [
-                    "로이터: 미 연준의 고금리 장기화 기조 재확인 속 달러인덱스 강보합 추이 지속",
-                    "블룸버그: 원/달러 환율 금융시장 변동성 확대 우려에 따른 정책 당국 유동성 모니터링 강화"
-                ],
-                "해상물류": [
-                    "블룸버그: 파나마 운하 통항 제한 추가 완화 소식에 주요 벌크선 해상운임(BDI) 안정세 기록",
-                    "로이터: 주요 항만 적체 현상 해소 흐름 속 글로벌 컨테이너 물류 지체 여파 점검"
-                ],
-                "관련 정책": [
-                    "로이터: 북미 주요 생산국의 신년 곡물 보조금 개편안 예고에 따른 무역 다변화 흐름 주시",
-                    "블룸버그: 신흥국들의 자국 식량 안보 강화를 위한 농산물 수출 관세 인상 조치 모니터링"
-                ]
-            }
-            for fb_item in fallbacks[cat["tag"]]:
-                curated_news.append({"tag": cat["tag"], "content": fb_item})
+            # 예외시 폴백 가상의 통합본 전달
+            combined_content = ", ".join(fallbacks[tag_name])
+            merged_news_list.append({"tag": tag_name, "content": combined_content})
                 
-    return curated_news
+    return merged_news_list
 
 specialized_news_list = fetch_translated_specialized_news()
 
