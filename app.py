@@ -318,54 +318,118 @@ with main_col_left:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name=selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dot')))
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=240, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=230, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
 
     # ----------------------------------------------------
-    # 파트 B: [디자인 강조 고도화] FAO 식품가격지수 추이 섹션
+    # 파트 B: [고도화 반영] FAO 식품가격지수 추이 분석 섹션
     # ----------------------------------------------------
-    st.markdown('<div class="section-title">🇺🇳 FAO 식품가격지수 추이 (월별)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">🇺🇳 FAO 식품가격지수 분석</div>', unsafe_allow_html=True)
     
     if df_fao_raw.empty or len(df_fao_raw) < 1:
         st.info("💡 구글 스프레드시트의 'FAO_지수' 데이터를 파싱하는 데 실패했습니다.")
     else:
         try:
             df_fao_raw['날짜'] = pd.to_datetime(df_fao_raw['날짜'])
-            df_fao = df_fao_raw.sort_values(by='날짜').copy()
+            df_fao_base = df_fao_raw.sort_values(by='날짜').copy()
             
-            # 전 컬럼 수치형 정제 자동 매핑
-            for col in ['식품가격지수', '축산물', '유제품', '곡물', '유지류', '설탕']:
-                if col in df_fao.columns:
-                    df_fao[col] = df_fao[col].apply(clean_numeric)
+            # 수치형 전처리 정제 보증
+            fao_cols_map = {
+                '식품가격지수': '식품가격지수', '곡물': '곡물', '유지류': '유지류', 
+                '축산물': '축산물', '유제품': '유제품', '설탕': '설탕'
+            }
+            for col in fao_cols_map.keys():
+                if col in df_fao_base.columns:
+                    df_fao_base[col] = df_fao_base[col].apply(clean_numeric)
+
+            # [요청 3] 지수 선택 필터 세팅
+            f_col1, f_col2 = st.columns([2, 2])
+            with f_col1:
+                selected_fao_idx = st.selectbox(
+                    "지수 선택 :", 
+                    ["전체 지수 보기", "식품가격지수", "곡물", "유지류", "축산물", "유제품", "설탕"], 
+                    index=0,
+                    key="fao_idx_select"
+                )
+            with f_col2:
+                selected_fao_period = st.selectbox(
+                    "조회 기간 :", 
+                    ["6개월", "1년", "3년", "5년", "전체 기간", "기간 설정"], 
+                    index=2,
+                    key="fao_period_select"
+                )
+
+            max_fao_date = df_fao_base['날짜'].max()
             
+            if selected_fao_period == "6개월": f_start = max_fao_date - pd.Timedelta(days=182)
+            elif selected_fao_period == "1년": f_start = max_fao_date - pd.Timedelta(days=365)
+            elif selected_fao_period == "3년": f_start = max_fao_date - pd.Timedelta(days=1095)
+            elif selected_fao_period == "5년": f_start = max_fao_date - pd.Timedelta(days=1825)
+            elif selected_fao_period == "전체 기간": f_start = df_fao_base['날짜'].min()
+            else:
+                st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+                fao_range = st.date_input(
+                    "FAO 분석 범위 지정:",
+                    value=(max_fao_date - pd.Timedelta(days=1095), max_fao_date),
+                    min_value=df_fao_base['날짜'].min().to_pydatetime(),
+                    max_value=max_fao_date.to_pydatetime(),
+                    key="fao_date_picker"
+                )
+                if isinstance(fao_range, tuple) and len(fao_range) == 2:
+                    f_start, f_end = pd.Timestamp(fao_range[0]), pd.Timestamp(fao_range[1])
+                else:
+                    f_start, f_end = max_fao_date - pd.Timedelta(days=1095), max_fao_date
+
+            if selected_fao_period != "기간 설정": f_end = max_fao_date
+
+            df_fao_filtered = df_fao_base[(df_fao_base['날짜'] >= f_start) & (df_fao_base['날짜'] <= f_end)].copy()
+
             fig_fao = go.Figure()
             
-            # [요청 반영] 배경 지표 레이어 배치 (연한 회색 점선으로 시각적 톤다운)
-            if '축산물' in df_fao.columns:
-                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['축산물'], name="축산물", line=dict(color='#cbd5e1', width=1.2, dash='dot')))
-            if '유제품' in df_fao.columns:
-                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['유제품'], name="유제품", line=dict(color='#cbd5e1', width=1.2, dash='dot')))
-            if '설탕' in df_fao.columns:
-                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['설탕'], name="설탕", line=dict(color='#cbd5e1', width=1.2, dash='dot')))
+            # 트레이스 정의용 사전 세팅 (지정 순서 및 라인 스타일 수치화 정의)
+            trace_specs = [
+                {'col': '식품가격지수', 'name': '식품가격지수', 'color': '#0f172a', 'width': 3.5, 'dash': 'solid', 'mode': 'lines'},
+                {'col': '곡물', 'name': '곡물', 'color': '#ea580c', 'width': 2.5, 'dash': 'solid', 'mode': 'lines+markers'},
+                {'col': '유지류', 'name': '유지류', 'color': '#2563eb', 'width': 2.5, 'dash': 'solid', 'mode': 'lines'},
+                {'col': '축산물', 'name': '축산물', 'color': '#94a3b8', 'width': 1.2, 'dash': 'dot', 'mode': 'lines'},
+                {'col': '유제품', 'name': '유제품', 'color': '#cbd5e1', 'width': 1.2, 'dash': 'dot', 'mode': 'lines'},
+                {'col': '설탕', 'name': '설탕', 'color': '#e2e8f0', 'width': 1.2, 'dash': 'dashdot', 'mode': 'lines'}
+            ]
+
+            for spec in trace_specs:
+                if spec['col'] in df_fao_filtered.columns:
+                    # 특정 지수만 선택한 경우, 선택되지 않은 트레이스는 패스
+                    if selected_fao_idx != "전체 지수 보기" and selected_fao_idx != spec['name']:
+                        continue
+                        
+                    fig_fao.add_trace(go.Scatter(
+                        x=df_fao_filtered['날짜'], 
+                        y=df_fao_filtered[spec['col']], 
+                        name=spec['name'],  # [요청 2] 아이콘 제거된 깨끗한 명칭 매핑
+                        mode=spec['mode'],
+                        line=dict(color=spec['color'], width=spec['width'], dash=spec['dash']),
+                        marker=dict(size=4) if 'markers' in spec['mode'] else None
+                    ))
             
-            # [요청 반영] 핵심 지표 상위 레이어 배치 (두께 및 선형 컬러 입체 강조 스타일 적용)
-            if '식품가격지수' in df_fao.columns:
-                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['식품가격지수'], name="👑 식품가격지수(종합)", line=dict(color='#0f172a', width=3.5)))
-            if '곡물' in df_fao.columns:
-                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['곡물'], name="🌾 곡물가격지수", mode='lines+markers', line=dict(color='#ea580c', width=2.5), marker=dict(size=5)))
-            if '유지류' in df_fao.columns:
-                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['유지류'], name="🧪 유지류가격지수", line=dict(color='#2563eb', width=2.5)))
-            
+            # [요청 1] 그래프 제목 설정 및 레이아웃 정의
             fig_fao.update_layout(
-                margin=dict(l=10, r=10, t=10, b=10), 
+                title=dict(text="FAO 식품가격지수 추이", font=dict(size=14, color="#0f172a", family="Malgun Gothic")),
+                margin=dict(l=10, r=10, t=40, b=10), 
                 height=260, 
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), 
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.02, 
+                    xanchor="left", 
+                    x=0,
+                    traceorder="normal" # 스펙 배열 순서대로 노출 유도 보증
+                ), 
                 template="plotly_white",
                 xaxis=dict(tickformat="%Y-%m")
             )
             st.plotly_chart(fig_fao, use_container_width=True)
         except Exception as fao_err:
-            st.error(f"FAO 지수 시각화 실패: {fao_err}. 컬럼 구성을 재확인하세요.")
+            st.error(f"FAO 지수 필터 가공 에러: {fao_err}")
 
 with main_col_right:
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
