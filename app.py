@@ -238,15 +238,15 @@ st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({heade
 st.markdown(f"""
 <div class="reason-section-box">
     <div class="reason-card" style="border-left-color: #1e3a8a;">
-        <div class="reason-card-title">🌾 밀 선물 (Wheat Briefing)</div>
+        <div class="reason-card-title">🌾 밀 선물</div>
         <div class="reason-card-text">{grain_reasons['wheat']}</div>
     </div>
     <div class="reason-card" style="border-left-color: #ea580c;">
-        <div class="reason-card-title">🌽 옥수수 선물 (Corn Briefing)</div>
+        <div class="reason-card-title">🌽 옥수수 선물</div>
         <div class="reason-card-text">{grain_reasons['corn']}</div>
     </div>
     <div class="reason-card" style="border-left-color: #b45309;">
-        <div class="reason-card-title">🥜 콩 선물 (Soybean Briefing)</div>
+        <div class="reason-card-title">🥜 콩 선물</div>
         <div class="reason-card-text">{grain_reasons['soybean']}</div>
     </div>
 </div>
