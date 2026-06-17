@@ -487,6 +487,3 @@ import_table_html = """
 """
 
 st.markdown(import_table_html, unsafe_allow_html=True)
-"""
-
-st.markdown(import_table_html, unsafe_allow_html=True)
