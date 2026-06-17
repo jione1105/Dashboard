@@ -24,34 +24,52 @@ st.markdown("""
     .report-title { font-size: 26px; font-weight: bold; color: #0f172a; border-bottom: 3px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; }
     .section-title { font-size: 16px; font-weight: bold; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px; margin-top: 5px; margin-bottom: 15px; }
     
-    /* 상단 지표 카드 스타일 */
-    .metric-card-box {
+    /* 상단 지표 기본 카드 스타일 (기존 복원) */
+    div[data-testid="stMetric"] {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
         border-top: 4px solid #3b82f6;
-        border-radius: 4px 4px 0 0;
+        border-radius: 4px;
         padding: 12px;
         text-align: center;
-        height: 108px;
     }
+    div[data-testid="stMetric"]:nth-child(5) {
+        border-top-color: #b45309;
+        background-color: #fffbeb;
+    }
+    
     .metric-val-text { font-size: 19px; font-weight: bold; color: #0f172a; }
     .unit-text { font-size: 12px; font-weight: normal; color: #64748b; margin-left: 2px; }
+    .sub-text { font-size: 12px; font-weight: normal; color: #b45309; margin-left: 4px; }
     
-    /* [신규] 로이터/블룸버그 한 줄 시황 텍스트 스타일 */
-    .market-reason-box {
-        background-color: #f1f5f9;
+    /* [신규 섹션] 일일 가격 변화 원인 카드 스타일 */
+    .reason-section-box {
+        background-color: #ffffff;
         border: 1px solid #e2e8f0;
-        border-top: none;
-        border-radius: 0 0 4px 4px;
-        padding: 6px 8px;
-        font-size: 11px;
-        color: #475569;
-        line-height: 1.4;
-        min-height: 48px;
+        border-radius: 6px;
+        padding: 16px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .reason-card {
+        background-color: #f8fafc;
+        border-left: 4px solid #475569;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        border-radius: 0 4px 4px 0;
+    }
+    .reason-card-title {
+        font-size: 13px;
+        font-weight: bold;
+        color: #1e293b;
+        margin-bottom: 4px;
         display: flex;
         align-items: center;
-        justify-content: center;
-        text-align: center;
+    }
+    .reason-card-text {
+        font-size: 12px;
+        color: #475569;
+        line-height: 1.5;
     }
     
     .color-up { color: #dc2626; font-weight: bold; }
@@ -158,34 +176,38 @@ def get_colored_chg_html(curr, base):
     except:
         return '<span class="color-flat">-</span>'
 
-# [구조 고도화] 상단 지표 카드와 하단 시황 한 줄을 결합하여 출력하는 렌더러 함수
-def render_metric_with_reason(label, curr_val, base_day, base_year, reason_text, unit="달러/톤"):
+def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", is_ratio=False):
     try:
+        is_val_na = pd.isna(curr_val) or (hasattr(curr_val, 'isna') and curr_val.isna().all())
+    except:
+        is_val_na = False
+
+    if is_val_na:
+        value_html = '<span class="metric-val-text">N/A</span>'
+        delta_html = '<div style="font-size:11px; color:#64748b; margin-top:4px;">-</div>'
+    else:
         val_clean = curr_val.iloc[0] if isinstance(curr_val, pd.Series) else curr_val
         b_day_clean = base_day.iloc[0] if isinstance(base_day, pd.Series) else base_day
         b_yr_clean = base_year.iloc[0] if isinstance(base_year, pd.Series) else base_year
-        
-        value_html = f'<span class="metric-val-text">{int(float(str(val_clean).replace(",","")))}</span><span class="unit-text">{unit}</span>'
-        chg_day = get_colored_chg_html(val_clean, b_day_clean)
-        chg_yr = get_colored_chg_html(val_clean, b_yr_clean)
-        delta_html = f'<div style="font-size:11px; margin-top:4px;">{chg_day} (전일) | {chg_yr} (전년)</div>'
-    except:
-        value_html = '<span class="metric-val-text">N/A</span>'
-        delta_html = '<div style="font-size:11px; color:#64748b; margin-top:4px;">-</div>'
 
-    # 지표 카드 부분 (위쪽 상자)
+        if is_ratio:
+            value_html = f'<span class="metric-val-text">{float(val_clean):.2f}</span><span class="sub-text">(적정: 2.50)</span>'
+            chg_day = get_colored_chg_html(val_clean, b_day_clean)
+            delta_html = f'<div style="font-size:11px; color:#64748b; margin-top:4px;">전일 대비 변동: {chg_day}</div>'
+        else:
+            value_html = f'<span class="metric-val-text">{int(float(str(val_clean).replace(",","")))}</span><span class="unit-text">{unit}</span>'
+            chg_day = get_colored_chg_html(val_clean, b_day_clean)
+            chg_yr = get_colored_chg_html(val_clean, b_yr_clean)
+            delta_html = f'<div style="font-size:11px; margin-top:4px;">{chg_day} (전일) | {chg_yr} (전년)</div>'
+
+    card_bg = "#fffbeb" if is_ratio else "#f8fafc"
+    card_border = "#3b82f6" if not is_ratio else "#b45309"
+    
     st.markdown(f"""
-    <div class="metric-card-box">
+    <div style="background-color: {card_bg}; border: 1px solid #e2e8f0; border-top: 4px solid {card_border}; border-radius: 4px; padding: 12px; text-align: center; height:108px; width:100%;">
         <div style="font-size: 13px; color: #334155; font-weight: bold;">{label}</div>
         <div style="margin-top:4px;">{value_html}</div>
         {delta_html}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # 로이터/블룸버그 분석 시황 (아래쪽 상자)
-    st.markdown(f"""
-    <div class="market-reason-box">
-        💬 {reason_text}
     </div>
     """, unsafe_allow_html=True)
 
@@ -200,23 +222,43 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역 (원인 시황 결합형)
+# 2. 상단 상위 지표 영역 (기존 복원)
 # ==========================================
-# 외신(Reuters/Bloomberg) 핵심 마켓 브리핑 기반 실시간 한 줄 원인 분석 정의
-reason_wheat = "미국 겨울밀 생산 전망치 소폭 하향 조정 및 기술적 매수세 유입으로 반등 시도"
-reason_corn = "USDA 보고서의 글로벌 공급 과잉 전망 및 미 박스권 기후 호조 지속으로 하락 압력 우세"
-reason_soybean = "중국의 미국산 4분기 공급 물량 확보 관련 대규모 수입 재개 루머에 힘입어 2주 만에 최고치 반등"
-reason_soyoil = "미국-이란 평화 협상 기대감에 따른 국제 유가 급락 영향으로 바이오디젤 수요 둔화 우려 반영"
-reason_soymeal = "대두박 가격 하락에 따른 저가 매수세 유입 및 글로벌 사료 단백질 수요의 일시적 회복"
-
 col1, col2, col3, col4, col5 = st.columns(5)
-with col1: render_metric_with_reason("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'], reason_wheat)
-with col2: render_metric_with_reason("🌽 옥수수 선물", latest['옥수수_달러톤'], prev_day['옥수수_달러톤'], prev_year['옥수수_달러톤'], reason_corn)
-with col3: render_metric_with_reason("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'], reason_soybean)
-with col4: render_metric_with_reason("🧪 대두유 선물", latest['대두유_달러톤'] if '대두유_달러톤' in latest else 0, prev_day['대두유_달러톤'] if '대두유_달러톤' in prev_day else 0, prev_year['대두유_달러톤'] if '대두유_달러톤' in prev_year else 0, reason_soyoil)
-with col5: render_metric_with_reason("🥩 대두박 선물", latest['대두박_달러톤'] if '대두박_달러톤' in latest else 0, prev_day['대두박_달러톤'] if '대두박_달러톤' in prev_day else 0, prev_year['대두박_달러톤'] if '대두박_달러톤' in prev_year else 0, reason_soymeal)
+with col1: render_metric_card("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'])
+with col2: render_metric_card("🌽 옥수수 선물", latest['옥수수_달러톤'], prev_day['옥수수_달러톤'], prev_year['옥수수_달러톤'])
+with col3: render_metric_card("🥜 콩 선물", latest['콩_달러톤'], prev_day['콩_달러톤'], prev_year['콩_달러톤'])
+with col4: render_metric_card("🍚 쌀 수출 (태국)", latest['쌀_달러톤'], prev_day['쌀_달러톤'], prev_year['쌀_달러톤'])
+with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수_비율'], prev_day['콩_옥수수_비율'], None, is_ratio=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
+
+# ==========================================
+# [신규 추가] 주요 곡물 일일 가격 변화 원인 섹션
+# ==========================================
+st.markdown('<div class="section-title">💡 주요 곡물 일일 시황 및 등락 원인 (Reuters / Bloomberg 기반)</div>', unsafe_allow_html=True)
+
+# 연구원님 업무에 맞추어 이곳의 텍스트 원인들을 주기적으로 수정 관리해주시면 됩니다.
+reason_wheat = "미국 겨울밀 주산지 수확기 진입에 따른 기술적 매수세 유입 및 유럽산 수출 물량 위축 우려로 반등"
+reason_corn = "USDA WASDE 보고서의 글로벌 기말 재고 상향 조정 및 남미산 공급 압박 지속으로 약보합 전개"
+reason_soybean = "중국의 미국산 가을물 물량 확보 타진 루머 및 글로벌 대두유 가격 급등 여파가 하방 방어"
+
+st.markdown(f"""
+<div class="reason-section-box">
+    <div class="reason-card" style="border-left-color: #1e3a8a;">
+        <div class="reason-card-title">🌾 밀 선물 (Wheat)</div>
+        <div class="reason-card-text">{reason_wheat}</div>
+    </div>
+    <div class="reason-card" style="border-left-color: #ea580c;">
+        <div class="reason-card-title">🌽 옥수수 선물 (Corn)</div>
+        <div class="reason-card-text">{reason_corn}</div>
+    </div>
+    <div class="reason-card" style="border-left-color: #b45309;">
+        <div class="reason-card-title">🥜 콩 선물 (Soybean)</div>
+        <div class="reason-card-text">{reason_soybean}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # ==========================================
 # 3. 실시간 뉴스 크롤링 연동
@@ -261,7 +303,7 @@ main_col_left, main_col_right = st.columns([3, 2])
 with main_col_left:
     st.markdown('<div class="section-title">📊 곡물 가격 추이</div>', unsafe_allow_html=True)
     c1, c2 = st.columns([2, 2])
-    with c1: selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩"], index=0)
+    with c1: selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
     with c2:
         period_mapping = {"1달": 30, "3달": 90, "1년": 365, "5년": 1825}
         selected_period = st.selectbox("조회 기간 :", list(period_mapping.keys()), index=1)
@@ -278,7 +320,7 @@ with main_col_left:
         filtered_df['5MA'] = filtered_df[chart_target].rolling(window=5).mean()
         
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name=selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
+        fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name="국제곡물 선물가격지수" if selected_grain == "국제곡물 선물가격지수" else selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dot')))
         
         fig.update_layout(
@@ -442,6 +484,9 @@ import_table_html = """
 """ + import_rows_html + """
     </tbody>
 </table>
+"""
+
+st.markdown(import_table_html, unsafe_allow_html=True)
 """
 
 st.markdown(import_table_html, unsafe_allow_html=True)
