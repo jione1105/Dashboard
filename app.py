@@ -322,9 +322,9 @@ with main_col_left:
         st.plotly_chart(fig, use_container_width=True)
 
     # ----------------------------------------------------
-    # 파트 B: [고도화 반영] FAO 식품가격지수 추이 분석 섹션
+    # 파트 B: FAO 식품가격지수 추이 분석 섹션
     # ----------------------------------------------------
-    st.markdown('<div class="section-title">🇺🇳 FAO 식품가격지수 분석</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이</div>', unsafe_allow_html=True)
     
     if df_fao_raw.empty or len(df_fao_raw) < 1:
         st.info("💡 구글 스프레드시트의 'FAO_지수' 데이터를 파싱하는 데 실패했습니다.")
@@ -333,16 +333,10 @@ with main_col_left:
             df_fao_raw['날짜'] = pd.to_datetime(df_fao_raw['날짜'])
             df_fao_base = df_fao_raw.sort_values(by='날짜').copy()
             
-            # 수치형 전처리 정제 보증
-            fao_cols_map = {
-                '식품가격지수': '식품가격지수', '곡물': '곡물', '유지류': '유지류', 
-                '축산물': '축산물', '유제품': '유제품', '설탕': '설탕'
-            }
-            for col in fao_cols_map.keys():
+            for col in ['식품가격지수', '곡물', '유지류', '축산물', '유제품', '설탕']:
                 if col in df_fao_base.columns:
                     df_fao_base[col] = df_fao_base[col].apply(clean_numeric)
 
-            # [요청 3] 지수 선택 필터 세팅
             f_col1, f_col2 = st.columns([2, 2])
             with f_col1:
                 selected_fao_idx = st.selectbox(
@@ -386,35 +380,31 @@ with main_col_left:
 
             fig_fao = go.Figure()
             
-            # 트레이스 정의용 사전 세팅 (지정 순서 및 라인 스타일 수치화 정의)
+            # [디자인 개편] 지정 명도 차이 Gray 스펙트럼 및 패턴 레이어 완벽 커스텀 매핑
             trace_specs = [
-                {'col': '식품가격지수', 'name': '식품가격지수', 'color': '#0f172a', 'width': 3.5, 'dash': 'solid', 'mode': 'lines'},
-                {'col': '곡물', 'name': '곡물', 'color': '#ea580c', 'width': 2.5, 'dash': 'solid', 'mode': 'lines+markers'},
-                {'col': '유지류', 'name': '유지류', 'color': '#2563eb', 'width': 2.5, 'dash': 'solid', 'mode': 'lines'},
-                {'col': '축산물', 'name': '축산물', 'color': '#94a3b8', 'width': 1.2, 'dash': 'dot', 'mode': 'lines'},
-                {'col': '유제품', 'name': '유제품', 'color': '#cbd5e1', 'width': 1.2, 'dash': 'dot', 'mode': 'lines'},
-                {'col': '설탕', 'name': '설탕', 'color': '#e2e8f0', 'width': 1.2, 'dash': 'dashdot', 'mode': 'lines'}
+                {'col': '식품가격지수', 'name': '식품가격지수', 'color': '#0f172a', 'width': 3.5, 'dash': 'solid'},
+                {'col': '곡물', 'name': '곡물', 'color': '#38bdf8', 'width': 2.5, 'dash': 'solid'},         # 하늘색 실선
+                {'col': '유지류', 'name': '유지류', 'color': '#f97316', 'width': 2.5, 'dash': 'solid'},       # 주황색 실선
+                {'col': '축산물', 'name': '축산물', 'color': '#64748b', 'width': 1.8, 'dash': 'dash'},        # 진한 회색 + 촘촘한 대시선
+                {'col': '유제품', 'name': '유제품', 'color': '#94a3b8', 'width': 1.8, 'dash': 'dot'},         # 중간 회색 + 점선
+                {'col': '설탕', 'name': '설탕', 'color': '#cbd5e1', 'width': 1.8, 'dash': 'dashdot'}      # 연한 회색 + 일점쇄선
             ]
 
             for spec in trace_specs:
                 if spec['col'] in df_fao_filtered.columns:
-                    # 특정 지수만 선택한 경우, 선택되지 않은 트레이스는 패스
                     if selected_fao_idx != "전체 지수 보기" and selected_fao_idx != spec['name']:
                         continue
                         
                     fig_fao.add_trace(go.Scatter(
                         x=df_fao_filtered['날짜'], 
                         y=df_fao_filtered[spec['col']], 
-                        name=spec['name'],  # [요청 2] 아이콘 제거된 깨끗한 명칭 매핑
-                        mode=spec['mode'],
-                        line=dict(color=spec['color'], width=spec['width'], dash=spec['dash']),
-                        marker=dict(size=4) if 'markers' in spec['mode'] else None
+                        name=spec['name'], 
+                        mode='lines',
+                        line=dict(color=spec['color'], width=spec['width'], dash=spec['dash'])
                     ))
             
-            # [요청 1] 그래프 제목 설정 및 레이아웃 정의
             fig_fao.update_layout(
-                title=dict(text="FAO 식품가격지수 추이", font=dict(size=14, color="#0f172a", family="Malgun Gothic")),
-                margin=dict(l=10, r=10, t=40, b=10), 
+                margin=dict(l=10, r=10, t=15, b=10), 
                 height=260, 
                 legend=dict(
                     orientation="h", 
@@ -422,7 +412,7 @@ with main_col_left:
                     y=1.02, 
                     xanchor="left", 
                     x=0,
-                    traceorder="normal" # 스펙 배열 순서대로 노출 유도 보증
+                    traceorder="normal"
                 ), 
                 template="plotly_white",
                 xaxis=dict(tickformat="%Y-%m")
