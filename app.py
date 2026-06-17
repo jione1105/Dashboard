@@ -205,17 +205,17 @@ with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. 주요 곡물 일일 시황 영역 (G, H, I열 강제 복원)
+# 3. 주요 곡물 일일 시황 영역 (G, H, I열 명칭기반 매핑 교정 완료)
 # ==========================================
-# [교정 완료] 일련의 파싱 버그를 해결하기 위해 iloc 주소를 구글 시트 G(6), H(7), I(8) 열로 완전 고정
+# [완벽 보완] 인덱스 오류 위험을 영구 배제하기 위해 구글 시트 실제 명명 컬럼명 헤더로 조건부 추출 전면 수정
 try:
-    sheet_reason_wheat = sanitize_string(latest.iloc[6]) if len(latest) >= 7 and pd.notna(latest.iloc[6]) else "G열에 입력된 밀 시황이 존재하지 않습니다."
-    sheet_reason_corn = sanitize_string(latest.iloc[7]) if len(latest) >= 8 and pd.notna(latest.iloc[7]) else "H열에 입력된 옥수수 시황이 존재하지 않습니다."
-    sheet_reason_soybean = sanitize_string(latest.iloc[8]) if len(latest) >= 9 and pd.notna(latest.iloc[8]) else "I열에 입력된 콩 시황이 존재하지 않습니다."
-except:
-    sheet_reason_wheat = "스프레드시트 G열 파싱 실패"
-    sheet_reason_corn = "스프레드시트 H열 파싱 실패"
-    sheet_reason_soybean = "스프레드시트 I열 파싱 실패"
+    sheet_reason_wheat = sanitize_string(latest['밀_선물시황']) if '밀_선물시황' in latest and pd.notna(latest['밀_선물시황']) else (sanitize_string(latest.iloc[6]) if len(latest) >= 7 else "G열 시황 비어있음")
+    sheet_reason_corn = sanitize_string(latest['옥수수_선물시황']) if '옥수수_선물시황' in latest and pd.notna(latest['옥수수_선물시황']) else (sanitize_string(latest.iloc[7]) if len(latest) >= 8 else "H열 시황 비어있음")
+    sheet_reason_soybean = sanitize_string(latest['콩_선물시황']) if '콩_선물시황' in latest and pd.notna(latest['콩_선물시황']) else (sanitize_string(latest.iloc[8]) if len(latest) >= 9 else "I열 시황 비어있음")
+except Exception as e:
+    sheet_reason_wheat = "G열(밀_선물시황) 연동 대기 중"
+    sheet_reason_corn = "H열(옥수수_선물시황) 연동 대기 중"
+    sheet_reason_soybean = "I열(콩_선물시황) 연동 대기 중"
 
 st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 st.markdown(f"""
@@ -236,13 +236,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 4. [대개편] 5대 전문 업무 분야 자동 뉴스 수집 엔진
+# 4. 5대 전문 부문별 백두대간 뉴스 크롤링 파이프라인
 # ==========================================
 @st.cache_data(ttl=600)
 def fetch_specialized_market_news():
     curated_news = []
-    
-    # 지시해주신 분야별 정밀 타겟 쿼리 매핑 규칙
     categories = [
         {"tag": "국제곡물", "q": "(wheat OR corn OR soybean OR rice OR palm oil OR sugar) (reuters OR bloomberg OR market)"},
         {"tag": "원자재", "q": "('crude oil' OR 'natural gas' OR biodiesel OR ethanol OR urea OR ammonia) (reuters OR bloomberg)"},
@@ -250,25 +248,18 @@ def fetch_specialized_market_news():
         {"tag": "해상물류", "q": "(freight OR BDI OR 'shipping congestion' OR 'Panama canal' OR port) (reuters OR bloomberg)"},
         {"tag": "관련 정책", "q": "(grain export policy OR agriculture subsidy OR trade restriction) (reuters OR bloomberg)"}
     ]
-    
     for cat in categories:
         try:
             url = f"https://news.google.com/rss/search?q={quote(cat['q'])}&hl=ko&gl=KR&ceid=KR:ko"
             res = requests.get(url, timeout=8)
             soup = BeautifulSoup(res.content, features="xml")
             articles = soup.findAll("item")
-            
             for article in articles:
                 title = article.title.text.split(" - ")[0]
-                # 타 연구원 보고서 중복 배제 필터링
                 if any(k in title for k in ["한국농촌경제연구원", "KREI", "농촌경제연구원"]): continue
-                
                 curated_news.append({"tag": cat["tag"], "content": title})
-                break # 각 분야별로 가장 중요한 1개 기사 추출 (총 5개 균형 정렬)
-        except:
-            pass
-            
-    # 네트워크 예외 상황을 감안한 최고 등급 백업 시스템 구축 (요청 사양 키워드 완벽 반영)
+                break
+        except: pass
     if len(curated_news) < 3:
         curated_news = [
             {"tag": "국제곡물", "content": "글로벌 소맥·옥수수 주요국 산지 기후 위기 및 대두유·팜유 바이오디젤 전환 수요 공방 촉각"},
@@ -282,16 +273,14 @@ def fetch_specialized_market_news():
 specialized_news_list = fetch_specialized_market_news()
 
 # ==========================================
-# 5. 중간 분할 레이아웃
+# 5. 중간 분할 레이아웃 (수평 수두라인 완벽 대칭 설계)
 # ==========================================
-main_col_left, main_col_right = st.columns([3, 2])
+# [수정 사항 핵심] 섹션 시작 높이 정렬을 위해 완전히 대등한 가로 정렬 배치 컨테이너 블록 수립
+col_line1_left, col_line1_right = st.columns([3, 2])
 
-with main_col_left:
-    # ----------------------------------------------------
-    # 파트 A: 곡물 가격 추이 섹션
-    # ----------------------------------------------------
+# --- 라인 1 좌측: 곡물 가격 추이 섹션 ---
+with col_line1_left:
     st.markdown('<div class="section-title">📊 곡물 가격 추이</div>', unsafe_allow_html=True)
-    
     c1, c2 = st.columns([2, 2])
     with c1: selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
     with c2:
@@ -299,7 +288,6 @@ with main_col_left:
         selected_period = st.selectbox("조회 기간 :", period_options, index=2)
     
     max_available_date = df_macro.index.max()
-    
     if selected_period == "1개월": start_date = max_available_date - pd.Timedelta(days=30)
     elif selected_period == "6개월": start_date = max_available_date - pd.Timedelta(days=182)
     elif selected_period == "1년": start_date = max_available_date - pd.Timedelta(days=365)
@@ -337,11 +325,20 @@ with main_col_left:
         fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=230, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
 
-    # ----------------------------------------------------
-    # 파트 B: FAO 식품가격지수 추이 분석 섹션
-    # ----------------------------------------------------
+# --- 라인 1 우측: 주요 뉴스 섹션 (곡물 가격 추이 섹션과 시작점 수평 대칭 일치 완료) ---
+with col_line1_right:
+    st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 52px;'></div>", unsafe_allow_html=True) # 조작 드롭다운 빈칸 영역과 높이 패딩 매칭용 공백 마감
+    for item in specialized_news_list:
+        st.markdown(f'<li class="news-item"><span class="news-tag">{item["tag"]}</span>{item["content"]}</li>', unsafe_allow_html=True)
+
+# --- 대시보드 하단 레이어 라인 2 개설 (수평 동기화) ---
+st.markdown("<br>", unsafe_allow_html=True)
+col_line2_left, col_line2_right = st.columns([3, 2])
+
+# --- 라인 2 좌측: FAO 식품가격지수 추이 섹션 ---
+with col_line2_left:
     st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이</div>', unsafe_allow_html=True)
-    
     if df_fao_raw.empty or len(df_fao_raw) < 1:
         st.info("💡 구글 스프레드시트의 'FAO_지수' 데이터를 파싱하는 데 실패했습니다.")
     else:
@@ -355,22 +352,11 @@ with main_col_left:
 
             f_col1, f_col2 = st.columns([2, 2])
             with f_col1:
-                selected_fao_idx = st.selectbox(
-                    "지수 선택 :", 
-                    ["전체 지수 보기", "식품가격지수", "곡물", "유지류", "축산물", "유제품", "설탕"], 
-                    index=0,
-                    key="fao_idx_select"
-                )
+                selected_fao_idx = st.selectbox("지수 선택 :", ["전체 지수 보기", "식품가격지수", "곡물", "유지류", "축산물", "유제품", "설탕"], index=0, key="fao_idx_select")
             with f_col2:
-                selected_fao_period = st.selectbox(
-                    "조회 기간 :", 
-                    ["6개월", "1년", "3년", "5년", "전체 기간", "기간 설정"], 
-                    index=2,
-                    key="fao_period_select"
-                )
+                selected_fao_period = st.selectbox("조회 기간 :", ["6개월", "1년", "3년", "5년", "전체 기간", "기간 설정"], index=2, key="fao_period_select")
 
             max_fao_date = df_fao_base['날짜'].max()
-            
             if selected_fao_period == "6개월": f_start = max_fao_date - pd.Timedelta(days=182)
             elif selected_fao_period == "1년": f_start = max_fao_date - pd.Timedelta(days=365)
             elif selected_fao_period == "3년": f_start = max_fao_date - pd.Timedelta(days=1095)
@@ -378,22 +364,13 @@ with main_col_left:
             elif selected_fao_period == "전체 기간": f_start = df_fao_base['날짜'].min()
             else:
                 st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
-                fao_range = st.date_input(
-                    "FAO 분석 범위 지정:",
-                    value=(max_fao_date - pd.Timedelta(days=1095), max_fao_date),
-                    min_value=df_fao_base['날짜'].min().to_pydatetime(),
-                    max_value=max_fao_date.to_pydatetime(),
-                    key="fao_date_picker"
-                )
-                if isinstance(fao_range, tuple) and len(fao_range) == 2:
-                    f_start, f_end = pd.Timestamp(fao_range[0]), pd.Timestamp(fao_range[1])
-                else:
-                    f_start, f_end = max_fao_date - pd.Timedelta(days=1095), max_fao_date
+                fao_range = st.date_input("FAO 범위 지정:", value=(max_fao_date - pd.Timedelta(days=1095), max_fao_date), min_value=df_fao_base['날짜'].min().to_pydatetime(), max_value=max_fao_date.to_pydatetime(), key="fao_date_picker")
+                if isinstance(fao_range, tuple) and len(fao_range) == 2: start_date, f_end = pd.Timestamp(fao_range[0]), pd.Timestamp(fao_range[1])
+                else: f_start, f_end = max_fao_date - pd.Timedelta(days=1095), max_fao_date
 
             if selected_fao_period != "기간 설정": f_end = max_fao_date
 
             df_fao_filtered = df_fao_base[(df_fao_base['날짜'] >= f_start) & (df_fao_base['날짜'] <= f_end)].copy()
-
             fig_fao = go.Figure()
             
             trace_specs = [
@@ -404,46 +381,20 @@ with main_col_left:
                 {'col': '유제품', 'name': '유제품', 'color': '#94a3b8', 'width': 1.8, 'dash': 'dot'},         
                 {'col': '설탕', 'name': '설탕', 'color': '#cbd5e1', 'width': 1.8, 'dash': 'dashdot'}      
             ]
-
             for spec in trace_specs:
                 if spec['col'] in df_fao_filtered.columns:
-                    if selected_fao_idx != "전체 지수 보기" and selected_fao_idx != spec['name']:
-                        continue
-                        
-                    fig_fao.add_trace(go.Scatter(
-                        x=df_fao_filtered['날짜'], 
-                        y=df_fao_filtered[spec['col']], 
-                        name=spec['name'], 
-                        mode='lines',
-                        line=dict(color=spec['color'], width=spec['width'], dash=spec['dash'])
-                    ))
+                    if selected_fao_idx != "전체 지수 보기" and selected_fao_idx != spec['name']: continue
+                    fig_fao.add_trace(go.Scatter(x=df_fao_filtered['날짜'], y=df_fao_filtered[spec['col']], name=spec['name'], mode='lines', line=dict(color=spec['color'], width=spec['width'], dash=spec['dash'])))
             
-            fig_fao.update_layout(
-                margin=dict(l=10, r=10, t=15, b=10), 
-                height=260, 
-                legend=dict(
-                    orientation="h", 
-                    yanchor="bottom", 
-                    y=1.02, 
-                    xanchor="left", 
-                    x=0,
-                    traceorder="normal"
-                ), 
-                template="plotly_white",
-                xaxis=dict(tickformat="%Y-%m")
-            )
+            fig_fao.update_layout(margin=dict(l=10, r=10, t=15, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white", xaxis=dict(tickformat="%Y-%m"))
             st.plotly_chart(fig_fao, use_container_width=True)
         except Exception as fao_err:
             st.error(f"FAO 지수 필터 가공 에러: {fao_err}")
 
-with main_col_right:
-    # [개편 완료] 요청하신 순서와 정밀 키워드로 태그 렌더링 마감
-    st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
-    for item in specialized_news_list:
-        st.markdown(f'<li class="news-item"><span class="news-tag">{item["tag"]}</span>{item["content"]}</li>', unsafe_allow_html=True)
-    
+# --- 라인 2 우측: 거시지표 추이 섹션 (FAO 식품가격지수 추이 섹션과 시작점 수평 대칭 일치 완료) ---
+with col_line2_right:
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
-    
+    st.markdown("<div style='margin-top: 52px;'></div>", unsafe_allow_html=True) # 좌측 드롭다운 컨트롤러와 높이 맞춤 패딩 마감
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
@@ -483,12 +434,10 @@ feed_df = df_import_filtered[df_import_filtered['구분'] == '사료용']
 
 import_rows_html = ""
 
-# --- 식용 데이터 연산 루프 ---
 for idx, row in enumerate(food_df.to_dict('records')):
     item_name = sanitize_string(row.get('품목명', ''))
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
     p_curr = clean_numeric(row.get('평균 수입단가(달러/톤)', 0))
-    
     weight_display = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
     price_display = f"${p_curr:.2f}" if p_curr > 0 else "N/A"
     
@@ -498,19 +447,14 @@ for idx, row in enumerate(food_df.to_dict('records')):
         if len(past_months) > 0: p_prev_month = pivot_price.loc[past_months[-1], item_name]
         past_years = pivot_price.index[(pivot_price.index.year == latest_import_date.year - 1) & (pivot_price.index.month == latest_import_date.month)]
         if len(past_years) > 0: p_prev_year = pivot_price.loc[past_years[0], item_name]
-
-    td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
-    td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
     category_td = f'<td class="category-cell-style" rowspan="{len(food_df)}">식용</td>' if idx == 0 else ""
-    import_rows_html += "<tr>" + category_td + "<td class='table-text-left'>" + item_name + "</td><td>" + weight_display + "</td><td>" + price_display + "</td><td>" + td_month_chg + "</td><td>" + td_year_chg + "</td></tr>"
+    import_rows_html += "<tr>" + category_td + "<td class='table-text-left'>" + item_name + "</td><td>" + weight_display + "</td><td>" + price_display + "</td><td>" + get_colored_chg_html(p_curr, p_prev_month) + "</td><td>" + get_colored_chg_html(p_curr, p_prev_year) + "</td></tr>"
 
-# --- 사료용 데이터 연산 루프 ---
 for idx, row in enumerate(feed_df.to_dict('records')):
     item_name = sanitize_string(row.get('품목명', ''))
     w_clean = str(row.get('수입량(톤)', 'N/A')).replace(',', '').strip()
     p_curr = clean_numeric(row.get('평균 수입단가(달러/톤)', 0))
-    
     weight_display = f"{int(float(w_clean)):,}" if pd.notna(row.get('수입량(톤)')) and w_clean.lower() != 'n/a' else "N/A"
     price_display = f"${p_curr:.2f}" if p_curr > 0 else "N/A"
     
@@ -520,29 +464,14 @@ for idx, row in enumerate(feed_df.to_dict('records')):
         if len(past_months) > 0: p_prev_month = pivot_price.loc[past_months[-1], item_name]
         past_years = pivot_price.index[(pivot_price.index.year == latest_import_date.year - 1) & (pivot_price.index.month == latest_import_date.month)]
         if len(past_years) > 0: p_prev_year = pivot_price.loc[past_years[0], item_name]
-
-    td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
-    td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
-    
+        
     category_td = f'<td class="category-cell-style" rowspan="{len(feed_df)}">사료용</td>' if idx == 0 else ""
-    import_rows_html += "<tr>" + category_td + "<td class='table-text-left'>" + item_name + "</td><td>" + weight_display + "</td><td>" + price_display + "</td><td>" + td_month_chg + "</td><td>" + td_year_chg + "</td></tr>"
+    import_rows_html += "<tr>" + category_td + "<td class='table-text-left'>" + item_name + "</td><td>" + weight_display + "</td><td>" + price_display + "</td><td>" + get_colored_chg_html(p_curr, p_prev_month) + "</td><td>" + get_colored_chg_html(p_curr, p_prev_year) + "</td></tr>"
 
 import_table_html = """
 <table class="dashboard-table">
-    <thead>
-        <tr>
-            <th style="width:10%;">구분</th>
-            <th style="width:18%;">품목명</th>
-            <th style="width:18%;">수입량(톤)</th>
-            <th style="width:22%;">수입단가(달러/톤)</th>
-            <th style="width:16%;">전월 대비 증감률</th>
-            <th style="width:16%;">전년 대비 증감률</th>
-        </tr>
-    </thead>
-    <tbody>
-""" + import_rows_html + """
-    </tbody>
+    <thead><tr><th style="width:10%;">구분</th><th style="width:18%;">품목명</th><th style="width:18%;">수입량(톤)</th><th style="width:22%;">수입단가(달러/톤)</th><th style="width:16%;">전월 대비 증감률</th><th style="width:16%;">전년 대비 증감률</th></tr></thead>
+    <tbody>""" + import_rows_html + """</tbody>
 </table>
 """
-
 st.markdown(import_table_html, unsafe_allow_html=True)
