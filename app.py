@@ -87,7 +87,7 @@ def load_excel_data(base_url):
             
         sheet_macro_encoded = quote("시황_거시지표")
         sheet_import_encoded = quote("수입_추이")
-        sheet_fao_encoded = quote("FAO_지수") # 신설 탭 매핑
+        sheet_fao_encoded = quote("FAO_지수")
         
         url_macro = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_macro_encoded}"
         df_macro = pd.read_csv(url_macro)
@@ -95,12 +95,8 @@ def load_excel_data(base_url):
         url_import = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_import_encoded}"
         df_import = pd.read_csv(url_import)
         
-        # FAO 지수 로드 프로세스 (예외 제어 처리)
-        try:
-            url_fao = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_fao_encoded}"
-            df_fao = pd.read_csv(url_fao)
-        except:
-            df_fao = pd.DataFrame(columns=['날짜', '식품가격지수_종합', '곡물가격지수'])
+        url_fao = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_fao_encoded}"
+        df_fao = pd.read_csv(url_fao)
         
         return df_macro, df_import, df_fao
     except Exception as e:
@@ -109,7 +105,7 @@ def load_excel_data(base_url):
 
 df_macro_raw, df_import_raw, df_fao_raw = load_excel_data(SPREADSHEET_URL)
 
-if df_macro_raw is None or df_import_raw is None:
+if df_macro_raw is None or df_import_raw is None or df_fao_raw is None:
     st.stop()
 
 # --- 데이터 가공 및 정렬 ---
@@ -270,13 +266,13 @@ def fetch_global_macro_news():
 macro_news_list = fetch_global_macro_news()
 
 # ==========================================
-# 5. 중간 분할 레이아웃 (좌측: 차트 대형 파이프라인 / 우측: 지표 테이블)
+# 5. 중간 분할 레이아웃
 # ==========================================
 main_col_left, main_col_right = st.columns([3, 2])
 
 with main_col_left:
     # ----------------------------------------------------
-    # 파트 A: 곡물 가격 추이 섹션 (기존 기능 완전 유지)
+    # 파트 A: 곡물 가격 추이 섹션
     # ----------------------------------------------------
     st.markdown('<div class="section-title">📊 곡물 가격 추이</div>', unsafe_allow_html=True)
     
@@ -322,38 +318,54 @@ with main_col_left:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name=selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dot')))
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=240, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
 
     # ----------------------------------------------------
-    # [교정 신설] 파트 B: FAO 식품가격지수 추이 섹션 (곡물 가격 바로 아래 고정)
+    # 파트 B: [디자인 강조 고도화] FAO 식품가격지수 추이 섹션
     # ----------------------------------------------------
     st.markdown('<div class="section-title">🇺🇳 FAO 식품가격지수 추이 (월별)</div>', unsafe_allow_html=True)
     
     if df_fao_raw.empty or len(df_fao_raw) < 1:
-        st.info("💡 구글 스프레드시트에 'FAO_지수' 탭을 생성하고 데이터를 입력하면 시계열 추이 그래프가 여기에 활성화됩니다.")
+        st.info("💡 구글 스프레드시트의 'FAO_지수' 데이터를 파싱하는 데 실패했습니다.")
     else:
         try:
             df_fao_raw['날짜'] = pd.to_datetime(df_fao_raw['날짜'])
             df_fao = df_fao_raw.sort_values(by='날짜').copy()
             
-            df_fao['식품가격지수_종합'] = df_fao['식품가격지수_종합'].apply(clean_numeric)
-            df_fao['곡물가격지수'] = df_fao['곡물가격지수'].apply(clean_numeric)
+            # 전 컬럼 수치형 정제 자동 매핑
+            for col in ['식품가격지수', '축산물', '유제품', '곡물', '유지류', '설탕']:
+                if col in df_fao.columns:
+                    df_fao[col] = df_fao[col].apply(clean_numeric)
             
             fig_fao = go.Figure()
-            fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['식품가격지수_종합'], name="식품종합지수(FFPI)", line=dict(color='#0f172a', width=2.5)))
-            fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['곡물가격지수'], name="곡물지수(Cereal Index)", line=dict(color='#b45309', width=2, dash='dash')))
+            
+            # [요청 반영] 배경 지표 레이어 배치 (연한 회색 점선으로 시각적 톤다운)
+            if '축산물' in df_fao.columns:
+                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['축산물'], name="축산물", line=dict(color='#cbd5e1', width=1.2, dash='dot')))
+            if '유제품' in df_fao.columns:
+                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['유제품'], name="유제품", line=dict(color='#cbd5e1', width=1.2, dash='dot')))
+            if '설탕' in df_fao.columns:
+                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['설탕'], name="설탕", line=dict(color='#cbd5e1', width=1.2, dash='dot')))
+            
+            # [요청 반영] 핵심 지표 상위 레이어 배치 (두께 및 선형 컬러 입체 강조 스타일 적용)
+            if '식품가격지수' in df_fao.columns:
+                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['식품가격지수'], name="👑 식품가격지수(종합)", line=dict(color='#0f172a', width=3.5)))
+            if '곡물' in df_fao.columns:
+                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['곡물'], name="🌾 곡물가격지수", mode='lines+markers', line=dict(color='#ea580c', width=2.5), marker=dict(size=5)))
+            if '유지류' in df_fao.columns:
+                fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['유지류'], name="🧪 유지류가격지수", line=dict(color='#2563eb', width=2.5)))
             
             fig_fao.update_layout(
                 margin=dict(l=10, r=10, t=10, b=10), 
-                height=240, 
+                height=260, 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), 
                 template="plotly_white",
                 xaxis=dict(tickformat="%Y-%m")
             )
             st.plotly_chart(fig_fao, use_container_width=True)
         except Exception as fao_err:
-            st.error(f"FAO 지수 파싱 중 에러 발생: {fao_err}. 컬럼명('날짜', '식품가격지수_종합', '곡물가격지수')을 확인하십시오.")
+            st.error(f"FAO 지수 시각화 실패: {fao_err}. 컬럼 구성을 재확인하세요.")
 
 with main_col_right:
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
