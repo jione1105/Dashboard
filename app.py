@@ -39,7 +39,6 @@ st.markdown("""
     .unit-text { font-size: 12px; font-weight: normal; color: #64748b; margin-left: 2px; }
     .sub-text { font-size: 12px; font-weight: normal; color: #b45309; margin-left: 4px; }
     
-    /* 일일 가격 변화 원인 카드 스타일 */
     .reason-section-box {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -76,7 +75,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 1. 구글 스프레드시트(엑셀) 연동 설정
+# 1. 구글 스프레드시트 데이터 연동 엔지니어링
 # ==========================================
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuWe4iQcGuplyQXhW8WFCNwVE/edit?usp=sharing"
 
@@ -88,6 +87,7 @@ def load_excel_data(base_url):
             
         sheet_macro_encoded = quote("시황_거시지표")
         sheet_import_encoded = quote("수입_추이")
+        sheet_fao_encoded = quote("FAO_지수") # 신설 탭 매핑
         
         url_macro = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_macro_encoded}"
         df_macro = pd.read_csv(url_macro)
@@ -95,12 +95,19 @@ def load_excel_data(base_url):
         url_import = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_import_encoded}"
         df_import = pd.read_csv(url_import)
         
-        return df_macro, df_import
+        # FAO 지수 로드 프로세스 (예외 제어 처리)
+        try:
+            url_fao = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_fao_encoded}"
+            df_fao = pd.read_csv(url_fao)
+        except:
+            df_fao = pd.DataFrame(columns=['날짜', '식품가격지수_종합', '곡물가격지수'])
+        
+        return df_macro, df_import, df_fao
     except Exception as e:
         st.error(f"데이터 파일 연결 실패: {e}")
-        return None, None
+        return None, None, None
 
-df_macro_raw, df_import_raw = load_excel_data(SPREADSHEET_URL)
+df_macro_raw, df_import_raw, df_fao_raw = load_excel_data(SPREADSHEET_URL)
 
 if df_macro_raw is None or df_import_raw is None:
     st.stop()
@@ -113,7 +120,6 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# 상단 타이틀 일자 연동 및 헤더용 날짜 가공
 latest_macro_date = df_macro.index.max()
 latest_macro_date_str = latest_macro_date.strftime('%Y.%m.%d')
 header_date_style = f"{latest_macro_date.month}월 {latest_macro_date.day}일"
@@ -203,54 +209,38 @@ with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. 주요 곡물 일일 시황 및 뉴스 자동 크롤링 영역
+# 3. 주요 곡물 일일 시황 영역
 # ==========================================
-@st.cache_data(ttl=600)
-def fetch_grain_market_reasons():
-    reasons = {
-        "wheat": "외신 주산지 기후 여건 감지 및 기술적 매매 공방에 따른 변동성 장세 유입",
-        "corn": "글로벌 공급 다변화 압박 및 주산지 기상 예측 변화에 따른 보합세 유지",
-        "soybean": "수요처의 4분기 도입 계약 타진 동향 및 남미 물류 가용성 변화에 따른 가격 저지선 형성"
-    }
-    targets = {
-        "wheat": "wheat grain (reuters OR bloomberg)",
-        "corn": "corn maize market (reuters OR bloomberg)",
-        "soybean": "soybean market (reuters OR bloomberg)"
-    }
-    for key, query in targets.items():
-        try:
-            url = f"https://news.google.com/rss/search?q={quote(query)}&hl=en&gl=US&ceid=US:en"
-            res = requests.get(url, timeout=6)
-            soup = BeautifulSoup(res.content, features="xml")
-            items = soup.findAll("item")
-            for item in items:
-                title = item.title.text
-                if any(w in title.lower() for w in ["wheat", "corn", "grain", "soybean", "oil"]):
-                    reasons[key] = title.split(" - ")[0]
-                    break
-        except: pass
-    return reasons
-
-grain_reasons = fetch_grain_market_reasons()
+try:
+    sheet_reason_wheat = sanitize_string(latest.iloc[6]) if len(latest) >= 7 and pd.notna(latest.iloc[6]) else "작성된 밀 시황이 시트에 존재하지 않습니다."
+    sheet_reason_corn = sanitize_string(latest.iloc[7]) if len(latest) >= 8 and pd.notna(latest.iloc[7]) else "작성된 옥수수 시황이 시트에 존재하지 않습니다."
+    sheet_reason_soybean = sanitize_string(latest.iloc[8]) if len(latest) >= 9 and pd.notna(latest.iloc[8]) else "작성된 콩 시황이 시트에 존재하지 않습니다."
+except:
+    sheet_reason_wheat = "시황 컬럼(G) 구성 요소를 찾을 수 없습니다."
+    sheet_reason_corn = "시황 컬럼(H) 구성 요소를 찾을 수 없습니다."
+    sheet_reason_soybean = "시황 컬럼(I) 구성 요소를 찾을 수 없습니다."
 
 st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 st.markdown(f"""
 <div class="reason-section-box">
     <div class="reason-card" style="border-left-color: #1e3a8a;">
         <div class="reason-card-title">🌾 밀 선물 (Wheat Briefing)</div>
-        <div class="reason-card-text">{grain_reasons['wheat']}</div>
+        <div class="reason-card-text">{sheet_reason_wheat}</div>
     </div>
     <div class="reason-card" style="border-left-color: #ea580c;">
         <div class="reason-card-title">🌽 옥수수 선물 (Corn Briefing)</div>
-        <div class="reason-card-text">{grain_reasons['corn']}</div>
+        <div class="reason-card-text">{sheet_reason_corn}</div>
     </div>
     <div class="reason-card" style="border-left-color: #b45309;">
         <div class="reason-card-title">🥜 콩 선물 (Soybean Briefing)</div>
-        <div class="reason-card-text">{grain_reasons['soybean']}</div>
+        <div class="reason-card-text">{sheet_reason_soybean}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# 4. 거시경제 주요 뉴스 자동 크롤링 영역
+# ==========================================
 @st.cache_data(ttl=600)
 def fetch_global_macro_news():
     news_items = []
@@ -280,37 +270,31 @@ def fetch_global_macro_news():
 macro_news_list = fetch_global_macro_news()
 
 # ==========================================
-# 4. 중간 분할 레이아웃 (기간 필터 완전 개편)
+# 5. 중간 분할 레이아웃 (좌측: 차트 대형 파이프라인 / 우측: 지표 테이블)
 # ==========================================
 main_col_left, main_col_right = st.columns([3, 2])
 
 with main_col_left:
+    # ----------------------------------------------------
+    # 파트 A: 곡물 가격 추이 섹션 (기존 기능 완전 유지)
+    # ----------------------------------------------------
     st.markdown('<div class="section-title">📊 곡물 가격 추이</div>', unsafe_allow_html=True)
     
-    # 상단 컨트롤러 정렬 (곡물 선택 및 기간 지정)
     c1, c2 = st.columns([2, 2])
     with c1: selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
     with c2:
-        # [교정 완료] 요청하신 시계열 맞춤 기간 지정 조건 적용
         period_options = ["1개월", "6개월", "1년", "3년", "5년", "10년", "기간 설정"]
-        selected_period = st.selectbox("조회 기간 :", period_options, index=2) # 기본값 1년
+        selected_period = st.selectbox("조회 기간 :", period_options, index=2)
     
-    # 기획된 선택 조건별 역산 알고리즘 처리
     max_available_date = df_macro.index.max()
     
-    if selected_period == "1개월":
-        start_date = max_available_date - pd.Timedelta(days=30)
-    elif selected_period == "6개월":
-        start_date = max_available_date - pd.Timedelta(days=182)
-    elif selected_period == "1년":
-        start_date = max_available_date - pd.Timedelta(days=365)
-    elif selected_period == "3년":
-        start_date = max_available_date - pd.Timedelta(days=1095)
-    elif selected_period == "5년":
-        start_date = max_available_date - pd.Timedelta(days=1825)
-    elif selected_period == "10년":
-        start_date = max_available_date - pd.Timedelta(days=3650)
-    else:  # "기간 설정" 맞춤 선택 시 달력 양식 활성화
+    if selected_period == "1개월": start_date = max_available_date - pd.Timedelta(days=30)
+    elif selected_period == "6개월": start_date = max_available_date - pd.Timedelta(days=182)
+    elif selected_period == "1년": start_date = max_available_date - pd.Timedelta(days=365)
+    elif selected_period == "3년": start_date = max_available_date - pd.Timedelta(days=1095)
+    elif selected_period == "5년": start_date = max_available_date - pd.Timedelta(days=1825)
+    elif selected_period == "10년": start_date = max_available_date - pd.Timedelta(days=3650)
+    else:
         st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
         date_range = st.date_input(
             "분석 범위 지정:",
@@ -323,11 +307,8 @@ with main_col_left:
         else:
             start_date, end_date = max_available_date - pd.Timedelta(days=365), max_available_date
 
-    # 기간 설정 모드가 아닐 때는 종료일을 무조건 최신 수집 데이터일까지 할당
-    if selected_period != "기간 설정":
-        end_date = max_available_date
+    if selected_period != "기간 설정": end_date = max_available_date
 
-    # 데이터 서브셋 슬라이싱 및 이동평균선(5MA) 보정
     filtered_df = df_macro.loc[start_date:end_date].copy()
     chart_target = '국제곡물_선물가격지수' if selected_grain == "국제곡물 선물가격지수" else f"{selected_grain}_달러톤"
     
@@ -341,8 +322,38 @@ with main_col_left:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name=selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dot')))
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=325, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------------------------------------------
+    # [교정 신설] 파트 B: FAO 식품가격지수 추이 섹션 (곡물 가격 바로 아래 고정)
+    # ----------------------------------------------------
+    st.markdown('<div class="section-title">🇺🇳 FAO 식품가격지수 추이 (월별)</div>', unsafe_allow_html=True)
+    
+    if df_fao_raw.empty or len(df_fao_raw) < 1:
+        st.info("💡 구글 스프레드시트에 'FAO_지수' 탭을 생성하고 데이터를 입력하면 시계열 추이 그래프가 여기에 활성화됩니다.")
+    else:
+        try:
+            df_fao_raw['날짜'] = pd.to_datetime(df_fao_raw['날짜'])
+            df_fao = df_fao_raw.sort_values(by='날짜').copy()
+            
+            df_fao['식품가격지수_종합'] = df_fao['식품가격지수_종합'].apply(clean_numeric)
+            df_fao['곡물가격지수'] = df_fao['곡물가격지수'].apply(clean_numeric)
+            
+            fig_fao = go.Figure()
+            fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['식품가격지수_종합'], name="식품종합지수(FFPI)", line=dict(color='#0f172a', width=2.5)))
+            fig_fao.add_trace(go.Scatter(x=df_fao['날짜'], y=df_fao['곡물가격지수'], name="곡물지수(Cereal Index)", line=dict(color='#b45309', width=2, dash='dash')))
+            
+            fig_fao.update_layout(
+                margin=dict(l=10, r=10, t=10, b=10), 
+                height=240, 
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), 
+                template="plotly_white",
+                xaxis=dict(tickformat="%Y-%m")
+            )
+            st.plotly_chart(fig_fao, use_container_width=True)
+        except Exception as fao_err:
+            st.error(f"FAO 지수 파싱 중 에러 발생: {fao_err}. 컬럼명('날짜', '식품가격지수_종합', '곡물가격지수')을 확인하십시오.")
 
 with main_col_right:
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
@@ -373,7 +384,7 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역
+# 6. 하단 수입 추이 영역
 # ==========================================
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max()
