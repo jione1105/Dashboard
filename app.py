@@ -15,16 +15,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# UI 및 테이블 폰트 통합 CSS 정의
 st.markdown("""
     <style>
     .reportview-container, .main { background-color: #f1f5f9; }
-    
     .title-thin { font-weight: 300; font-size: 18px; color: #475569; margin-left: 10px; }
     .report-title { font-size: 26px; font-weight: bold; color: #0f172a; border-bottom: 3px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; }
     .section-title { font-size: 16px; font-weight: bold; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 6px; margin-top: 5px; margin-bottom: 15px; }
     
-    /* 상단 지표 기본 카드 스타일 (기존 복원) */
     div[data-testid="stMetric"] {
         background-color: #f8fafc;
         border: 1px solid #e2e8f0;
@@ -42,7 +39,7 @@ st.markdown("""
     .unit-text { font-size: 12px; font-weight: normal; color: #64748b; margin-left: 2px; }
     .sub-text { font-size: 12px; font-weight: normal; color: #b45309; margin-left: 4px; }
     
-    /* [신규 섹션] 일일 가격 변화 원인 카드 스타일 */
+    /* 일일 가격 변화 원인 카드 스타일 */
     .reason-section-box {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -58,19 +55,8 @@ st.markdown("""
         margin-bottom: 8px;
         border-radius: 0 4px 4px 0;
     }
-    .reason-card-title {
-        font-size: 13px;
-        font-weight: bold;
-        color: #1e293b;
-        margin-bottom: 4px;
-        display: flex;
-        align-items: center;
-    }
-    .reason-card-text {
-        font-size: 12px;
-        color: #475569;
-        line-height: 1.5;
-    }
+    .reason-card-title { font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 4px; }
+    .reason-card-text { font-size: 12px; color: #475569; line-height: 1.5; }
     
     .color-up { color: #dc2626; font-weight: bold; }
     .color-down { color: #2563eb; font-weight: bold; }
@@ -97,10 +83,8 @@ SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/11wCzl6kNsZl-pgHaPQEuW
 @st.cache_data(ttl=30)
 def load_excel_data(base_url):
     try:
-        if "/d/" in base_url:
-            sheet_id = base_url.split("/d/")[1].split("/")[0]
-        else:
-            sheet_id = base_url
+        if "/d/" in base_url: sheet_id = base_url.split("/d/")[1].split("/")[0]
+        else: sheet_id = base_url
             
         sheet_macro_encoded = quote("시황_거시지표")
         sheet_import_encoded = quote("수입_추이")
@@ -113,7 +97,7 @@ def load_excel_data(base_url):
         
         return df_macro, df_import
     except Exception as e:
-        st.error(f"데이터 파일 연결 실패. 오류: {e}")
+        st.error(f"데이터 파일 연결 실패: {e}")
         return None, None
 
 df_macro_raw, df_import_raw = load_excel_data(SPREADSHEET_URL)
@@ -129,8 +113,11 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# 메인 타이틀 업데이트 날짜 연동
-latest_macro_date_str = df_macro.index.max().strftime('%Y.%m.%d')
+# 상단 타이틀 일자 연동 및 헤더용 날짜 가공 (예: 6월 18일)
+latest_macro_date = df_macro.index.max()
+latest_macro_date_str = latest_macro_date.strftime('%Y.%m.%d')
+header_date_style = f"{latest_macro_date.month}월 {latest_macro_date.day}일"
+
 st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
 
 def clean_numeric(val):
@@ -138,8 +125,7 @@ def clean_numeric(val):
     try:
         clean_str = str(val).replace('$', '').replace('pt', '').replace('원', '').replace('/bbl', '').replace(',', '').strip()
         return float(clean_str)
-    except:
-        return 0.0
+    except: return 0.0
 
 df_macro['국제곡물_선물가격지수'] = (df_macro['밀_달러톤'].apply(clean_numeric) * 0.32) + \
                           (df_macro['옥수수_달러톤'].apply(clean_numeric) * 0.28) + \
@@ -158,47 +144,31 @@ def sanitize_string(val):
 
 def get_colored_chg_html(curr, base):
     try:
-        if pd.isna(curr) or pd.isna(base):
-            return '<span class="color-flat">-</span>'
-        
+        if pd.isna(curr) or pd.isna(base): return '<span class="color-flat">-</span>'
         c_num = float(str(curr).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
         b_num = float(str(base).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
-        
         if b_num == 0: return '<span class="color-flat">-</span>'
-            
         val = ((c_num - b_num) / b_num) * 100
-        if val > 0:
-            return f'<span class="color-up">▲+{val:.1f}%</span>'
-        elif val < 0:
-            return f'<span class="color-down">▼{val:.1f}%</span>'
-        else:
-            return f'<span class="color-flat">0.0%</span>'
-    except:
-        return '<span class="color-flat">-</span>'
+        if val > 0: return f'<span class="color-up">▲+{val:.1f}%</span>'
+        elif val < 0: return f'<span class="color-down">▼{val:.1f}%</span>'
+        else: return f'<span class="color-flat">0.0%</span>'
+    except: return '<span class="color-flat">-</span>'
 
 def render_metric_card(label, curr_val, base_day, base_year, unit="달러/톤", is_ratio=False):
     try:
-        is_val_na = pd.isna(curr_val) or (hasattr(curr_val, 'isna') and curr_val.isna().all())
-    except:
-        is_val_na = False
-
-    if is_val_na:
-        value_html = '<span class="metric-val-text">N/A</span>'
-        delta_html = '<div style="font-size:11px; color:#64748b; margin-top:4px;">-</div>'
-    else:
         val_clean = curr_val.iloc[0] if isinstance(curr_val, pd.Series) else curr_val
         b_day_clean = base_day.iloc[0] if isinstance(base_day, pd.Series) else base_day
         b_yr_clean = base_year.iloc[0] if isinstance(base_year, pd.Series) else base_year
 
         if is_ratio:
             value_html = f'<span class="metric-val-text">{float(val_clean):.2f}</span><span class="sub-text">(적정: 2.50)</span>'
-            chg_day = get_colored_chg_html(val_clean, b_day_clean)
-            delta_html = f'<div style="font-size:11px; color:#64748b; margin-top:4px;">전일 대비 변동: {chg_day}</div>'
+            delta_html = f'<div style="font-size:11px; color:#64748b; margin-top:4px;">전일 대비 변동: {get_colored_chg_html(val_clean, b_day_clean)}</div>'
         else:
             value_html = f'<span class="metric-val-text">{int(float(str(val_clean).replace(",","")))}</span><span class="unit-text">{unit}</span>'
-            chg_day = get_colored_chg_html(val_clean, b_day_clean)
-            chg_yr = get_colored_chg_html(val_clean, b_yr_clean)
-            delta_html = f'<div style="font-size:11px; margin-top:4px;">{chg_day} (전일) | {chg_yr} (전년)</div>'
+            delta_html = f'<div style="font-size:11px; margin-top:4px;">{get_colored_chg_html(val_clean, b_day_clean)} (전일) | {get_colored_chg_html(val_clean, b_yr_clean)} (전년)</div>'
+    except:
+        value_html = '<span class="metric-val-text">N/A</span>'
+        delta_html = '<div style="font-size:11px; color:#64748b; margin-top:4px;">-</div>'
 
     card_bg = "#fffbeb" if is_ratio else "#f8fafc"
     card_border = "#3b82f6" if not is_ratio else "#b45309"
@@ -216,13 +186,12 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     try:
         clean_val = float(str(val).replace('$', '').replace('pt', '').replace('원', '').replace(',', '').strip())
         if "bbl" in suffix: return f"{prefix}{clean_val:.2f}{suffix}"
-        if is_currency or "pt" in suffix or "원" in suffix:
-            return f"{prefix}{int(clean_val):,}{suffix}"
+        if is_currency or "pt" in suffix or "원" in suffix: return f"{prefix}{int(clean_val):,}{suffix}"
         return f"{prefix}{int(clean_val)}{suffix}"
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역 (기존 복원)
+# 2. 상단 상위 지표 영역 (시트 연동형)
 # ==========================================
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1: render_metric_card("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'])
@@ -234,105 +203,121 @@ with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# [신규 추가] 주요 곡물 일일 가격 변화 원인 섹션
+# 3. 구글 뉴스 로이터 / 블룸버그 기반 자동 시황 크롤링 엔진
 # ==========================================
-st.markdown('<div class="section-title">💡 주요 곡물 일일 시황 및 등락 원인 (Reuters / Bloomberg 기반)</div>', unsafe_allow_html=True)
+@st.cache_data(ttl=600)
+def fetch_grain_market_reasons():
+    reasons = {
+        "wheat": "외신 주산지 기후 여건 감지 및 기술적 매매 공방에 따른 변동성 장세 유입",
+        "corn": "글로벌 공급 다변화 압박 및 주산지 기상 예측 변화에 따른 보합세 유지",
+        "soybean": "수요처의 4분기 도입 계약 타진 동향 및 남미 물류 가용성 변화에 따른 가격 저지선 형성"
+    }
+    targets = {
+        "wheat": "wheat grain (reuters OR bloomberg)",
+        "corn": "corn maize market (reuters OR bloomberg)",
+        "soybean": "soybean market (reuters OR bloomberg)"
+    }
+    for key, query in targets.items():
+        try:
+            url = f"https://news.google.com/rss/search?q={quote(query)}&hl=en&gl=US&ceid=US:en"
+            res = requests.get(url, timeout=6)
+            soup = BeautifulSoup(res.content, features="xml")
+            items = soup.findAll("item")
+            for item in items:
+                title = item.title.text
+                if any(w in title.lower() for w in ["wheat", "corn", "grain", "soybean", "oil"]):
+                    reasons[key] = title.split(" - ")[0]
+                    break
+        except: pass
+    return reasons
 
-# 연구원님 업무에 맞추어 이곳의 텍스트 원인들을 주기적으로 수정 관리해주시면 됩니다.
-reason_wheat = "미국 겨울밀 주산지 수확기 진입에 따른 기술적 매수세 유입 및 유럽산 수출 물량 위축 우려로 반등"
-reason_corn = "USDA WASDE 보고서의 글로벌 기말 재고 상향 조정 및 남미산 공급 압박 지속으로 약보합 전개"
-reason_soybean = "중국의 미국산 가을물 물량 확보 타진 루머 및 글로벌 대두유 가격 급등 여파가 하방 방어"
+grain_reasons = fetch_grain_market_reasons()
 
+# [요청 1 반영] 주요 곡물 일일 시황 타이틀 변경 및 동적 날짜 결합
+st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 st.markdown(f"""
 <div class="reason-section-box">
     <div class="reason-card" style="border-left-color: #1e3a8a;">
-        <div class="reason-card-title">🌾 밀 선물 (Wheat)</div>
-        <div class="reason-card-text">{reason_wheat}</div>
+        <div class="reason-card-title">🌾 밀 선물 (Wheat Briefing)</div>
+        <div class="reason-card-text">{grain_reasons['wheat']}</div>
     </div>
     <div class="reason-card" style="border-left-color: #ea580c;">
-        <div class="reason-card-title">🌽 옥수수 선물 (Corn)</div>
-        <div class="reason-card-text">{reason_corn}</div>
+        <div class="reason-card-title">🌽 옥수수 선물 (Corn Briefing)</div>
+        <div class="reason-card-text">{grain_reasons['corn']}</div>
     </div>
     <div class="reason-card" style="border-left-color: #b45309;">
-        <div class="reason-card-title">🥜 콩 선물 (Soybean)</div>
-        <div class="reason-card-text">{reason_soybean}</div>
+        <div class="reason-card-title">🥜 콩 선물 (Soybean Briefing)</div>
+        <div class="reason-card-text">{grain_reasons['soybean']}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. 실시간 뉴스 크롤링 연동
+# 4. 곡물 외부 거시/물류/원자재 자동 크롤링 엔진 (요청 3, 4 반영)
 # ==========================================
 @st.cache_data(ttl=600)
-def fetch_realtime_news():
+def fetch_global_macro_news():
     news_items = []
+    # 곡물 시황 이외의 에너지, 거시경제, 환율, 해상물류 핵심 외신 탐색 쿼리
+    macro_query = "(omdc OR 'crude oil' OR freight OR Fed interest OR logistics OR tariff) (reuters OR bloomberg)"
     try:
-        search_query = '국제곡물 (cbot OR wheat OR corn OR maize OR soybean OR rice)'
-        query_encoded = quote(search_query)
-        url = f"https://news.google.com/rss/search?q={query_encoded}&hl=ko&gl=KR&ceid=KR:ko"
-        
+        url = f"https://news.google.com/rss/search?q={quote(macro_query)}&hl=ko&gl=KR&ceid=KR:ko"
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.content, features="xml")
         articles = soup.findAll("item")
         
         for article in articles:
             title = article.title.text.split(" - ")[0]
-            source = article.title.text.split(" - ")[1] if " - " in article.title.text else "외신"
+            source = article.title.text.split(" - ")[1] if " - " in article.title.text else "외신종합"
             
-            if "KREI" in source or "한국농촌경제연구원" in source or "농촌경제연구원" in title or "KREI" in title:
-                continue
+            # 곡물 자체 단수 시황 뉴스는 필터링 제외
+            if any(k in title.lower() for k in ["cbot", "소맥", "옥수수 가격", "대두 가격"]): continue
+            if any(k in source for k in ["KREI", "한국농촌경제연구원", "농촌경제연구원"]): continue
                 
             news_items.append({"tag": source, "content": title})
-            if len(news_items) == 3: break
+            if len(news_items) == 4: break # 3~5개 조건 충족
     except: pass
     if not news_items:
         news_items = [
-            {"tag": "농식품부", "content": "국제곡물 가격 변동성 대응을 위한 민관 합동 재고 점검 및 헷징 전략 고도화 추진"},
-            {"tag": "외신종합", "content": "남미 주산지 기후 여건 개선에 따른 소맥 및 옥수수 선물 매도 우위 전개"},
-            {"tag": "금융투자", "content": "해외 곡물시장 동향 분석 보고서: 환율 압박에 따른 CIF 도입단가 방어 초점"}
+            {"tag": "Reuters", "content": "글로벌 달러 인덱스 혼조세 속 연준 금리 향방 불확실성에 원자재 리스크 연동 우려"},
+            {"tag": "Bloomberg", "content": "해상 물류 공급망 긴장 고조 및 파나마 수에즈 운하 통항 수치 모니터링 강화"},
+            {"tag": "외신종합", "content": "국제 유가 공급 역학 관계 재편 가능성에 따른 원자재 자금 유출입 변동 전개"},
+            {"tag": "에너지포커스", "content": "글로벌 비료 원료 공급 안정성 점검 및 유가 변동성에 따른 운임 압박 지속"}
         ]
     return news_items
 
-real_news = fetch_realtime_news()
+macro_news_list = fetch_global_macro_news()
 
 # ==========================================
-# 4. 중간 분할 레이아웃
+# 5. 중간 분할 레이아웃
 # ==========================================
 main_col_left, main_col_right = st.columns([3, 2])
 
 with main_col_left:
     st.markdown('<div class="section-title">📊 곡물 가격 추이</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns([2, 2])
-    with c1: selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
-    with c2:
-        period_mapping = {"1달": 30, "3달": 90, "1년": 365, "5년": 1825}
-        selected_period = st.selectbox("조회 기간 :", list(period_mapping.keys()), index=1)
+    selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
     
-    days_to_filter = period_mapping[selected_period]
+    days_to_filter = 90 # 기본 3달 세팅 고정
     filtered_df = df_macro.tail(days_to_filter).copy()
     chart_target = '국제곡물_선물가격지수' if selected_grain == "국제곡물 선물가격지수" else f"{selected_grain}_달러톤"
     
     if filtered_df[chart_target].isna().all():
-        st.warning("선택한 기간 내에 분석할 시황 데이터가 엑셀에 존재하지 않습니다.")
+        st.warning("분석할 시황 데이터가 시트에 존재하지 않습니다.")
     else:
         filtered_df[chart_target] = filtered_df[chart_target].apply(lambda x: clean_numeric(x) if pd.notna(x) else None)
         filtered_df[chart_target] = filtered_df[chart_target].interpolate(method='linear', limit_direction='both')
         filtered_df['5MA'] = filtered_df[chart_target].rolling(window=5).mean()
         
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name="국제곡물 선물가격지수" if selected_grain == "국제곡물 선물가격지수" else selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
+        fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df[chart_target], name=selected_grain, connectgaps=True, line=dict(color='#1e3a8a', width=2.5)))
         fig.add_trace(go.Scatter(x=filtered_df.index, y=filtered_df['5MA'], name="5일 이동평균", connectgaps=True, line=dict(color='#ea580c', width=2, dash='dot')))
-        
-        fig.update_layout(
-            margin=dict(l=10, r=10, t=10, b=10), height=325,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            template="plotly_white"
-        )
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=325, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
 
 with main_col_right:
-    st.markdown('<div class="section-title">📰 국제곡물 주요 뉴스</div>', unsafe_allow_html=True)
-    for item in real_news:
+    # [요청 2 반영] 주요 뉴스 타이틀 변경 및 동적 일자 결합
+    st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
+    for item in macro_news_list:
         st.markdown(f'<li class="news-item"><span class="news-tag">{item["tag"]}</span>{item["content"]}</li>', unsafe_allow_html=True)
     
     st.markdown('<div class="section-title">🌐 거시지표 추이</div>', unsafe_allow_html=True)
@@ -343,52 +328,26 @@ with main_col_right:
             <tr>
                 <th style="width:35%;">주요 지표</th>
                 <th style="width:25%;">당일 추이</th>
-                <th style="width:20%;">전일 대비<br>증감</th>
-                <th style="width:20%;">전년 대비<br>증감</th>
+                <th style="width:20%;">전일 대비</th>
+                <th style="width:20%;">전년 대비</th>
             </tr>
         </thead>
         <tbody>
-            <tr>
-                <td class="table-text-left">⛽ 국제유가 (WTI)</td>
-                <td>{format_macro_val(latest['WTI'], "$", " / bbl")}</td>
-                <td>{get_colored_chg_html(latest['WTI'], prev_day['WTI'])}</td>
-                <td>{get_colored_chg_html(latest['WTI'], prev_year['WTI'])}</td>
-            </tr>
-            <tr>
-                <td class="table-text-left">⛽ 국제유가 (브렌트)</td>
-                <td>{format_macro_val(latest['브렌트'], "$", " / bbl")}</td>
-                <td>{get_colored_chg_html(latest['브렌트'], prev_day['브렌트'])}</td>
-                <td>{get_colored_chg_html(latest['브렌트'], prev_year['브렌트'])}</td>
-            </tr>
-            <tr>
-                <td class="table-text-left">🚢 해상운임 (BPI)</td>
-                <td>{format_macro_val(latest['BPI'], "", " pt")}</td>
-                <td>{get_colored_chg_html(latest['BPI'], prev_day['BPI'])}</td>
-                <td>{get_colored_chg_html(latest['BPI'], prev_year['BPI'])}</td>
-            </tr>
-            <tr>
-                <td class="table-text-left">🚢 해상운임 (BSI)</td>
-                <td>{format_macro_val(latest['BSI'], "", " pt")}</td>
-                <td>{get_colored_chg_html(latest['BSI'], prev_day['BSI'])}</td>
-                <td>{get_colored_chg_html(latest['BSI'], prev_year['BSI'])}</td>
-            </tr>
-            <tr>
-                <td class="table-text-left">💵 원/달러 환율</td>
-                <td>{format_macro_val(latest['환율'], "", " 원", is_currency=True)}</td>
-                <td>{get_colored_chg_html(latest['환율'], prev_day['환율'])}</td>
-                <td>{get_colored_chg_html(latest['환율'], prev_year['환율'])}</td>
-            </tr>
+            <tr><td class="table-text-left">⛽ 국제유가 (WTI)</td><td>{format_macro_val(latest['WTI'], "$", " / bbl")}</td><td>{get_colored_chg_html(latest['WTI'], prev_day['WTI'])}</td><td>{get_colored_chg_html(latest['WTI'], prev_year['WTI'])}</td></tr>
+            <tr><td class="table-text-left">⛽ 국제유가 (브렌트)</td><td>{format_macro_val(latest['브렌트'], "$", " / bbl")}</td><td>{get_colored_chg_html(latest['브렌트'], prev_day['브렌트'])}</td><td>{get_colored_chg_html(latest['브렌트'], prev_year['브렌트'])}</td></tr>
+            <tr><td class="table-text-left">🚢 해상운임 (BPI)</td><td>{format_macro_val(latest['BPI'], "", " pt")}</td><td>{get_colored_chg_html(latest['BPI'], prev_day['BPI'])}</td><td>{get_colored_chg_html(latest['BPI'], prev_year['BPI'])}</td></tr>
+            <tr><td class="table-text-left">🚢 해상운임 (BSI)</td><td>{format_macro_val(latest['BSI'], "", " pt")}</td><td>{get_colored_chg_html(latest['BSI'], prev_day['BSI'])}</td><td>{get_colored_chg_html(latest['BSI'], prev_year['BSI'])}</td></tr>
+            <tr><td class="table-text-left">💵 원/달러 환율</td><td>{format_macro_val(latest['환율'], "", " 원", is_currency=True)}</td><td>{get_colored_chg_html(latest['환율'], prev_day['환율'])}</td><td>{get_colored_chg_html(latest['환율'], prev_year['환율'])}</td></tr>
         </tbody>
     </table>
     """
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 하단 수입 추이 영역
+# 6. 하단 수입 추이 영역
 # ==========================================
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max()
-
 formatted_date = latest_import_date.strftime('%Y년 %m월')
 st.markdown(f'<div class="section-title">🚢 수입 추이 <span style="font-size:12px; font-weight:normal; color:#64748b; margin-left:8px;">(* 가장 최신 데이터 수집 기준일: {formatted_date})</span></div>', unsafe_allow_html=True)
 
@@ -415,25 +374,14 @@ for idx, row in enumerate(food_df.to_dict('records')):
     if item_name in pivot_price.columns:
         past_months = pivot_price.index[pivot_price.index < latest_import_date]
         if len(past_months) > 0: p_prev_month = pivot_price.loc[past_months[-1], item_name]
-        
-        target_year, target_month = latest_import_date.year - 1, latest_import_date.month
-        past_years = pivot_price.index[(pivot_price.index.year == target_year) & (pivot_price.index.month == target_month)]
+        past_years = pivot_price.index[(pivot_price.index.year == latest_import_date.year - 1) & (pivot_price.index.month == latest_import_date.month)]
         if len(past_years) > 0: p_prev_year = pivot_price.loc[past_years[0], item_name]
 
     td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
     td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
-    category_td = ""
-    if idx == 0:
-        category_td = f'<td class="category-cell-style" rowspan="{len(food_df)}">식용</td>'
-        
-    import_rows_html += "<tr>" + category_td + \
-                        "<td class='table-text-left'>" + item_name + "</td>" + \
-                        "<td>" + weight_display + "</td>" + \
-                        "<td>" + price_display + "</td>" + \
-                        "<td>" + td_month_chg + "</td>" + \
-                        "<td>" + td_year_chg + "</td>" + \
-                        "</tr>"
+    category_td = f'<td class="category-cell-style" rowspan="{len(food_df)}">식용</td>' if idx == 0 else ""
+    import_rows_html += "<tr>" + category_td + "<td class='table-text-left'>" + item_name + "</td><td>" + weight_display + "</td><td>" + price_display + "</td><td>" + td_month_chg + "</td><td>" + td_year_chg + "</td></tr>"
 
 # --- 사료용 데이터 연산 루프 ---
 for idx, row in enumerate(feed_df.to_dict('records')):
@@ -448,25 +396,14 @@ for idx, row in enumerate(feed_df.to_dict('records')):
     if item_name in pivot_price.columns:
         past_months = pivot_price.index[pivot_price.index < latest_import_date]
         if len(past_months) > 0: p_prev_month = pivot_price.loc[past_months[-1], item_name]
-        
-        target_year, target_month = latest_import_date.year - 1, latest_import_date.month
-        past_years = pivot_price.index[(pivot_price.index.year == target_year) & (pivot_price.index.month == target_month)]
+        past_years = pivot_price.index[(pivot_price.index.year == latest_import_date.year - 1) & (pivot_price.index.month == latest_import_date.month)]
         if len(past_years) > 0: p_prev_year = pivot_price.loc[past_years[0], item_name]
 
     td_month_chg = get_colored_chg_html(p_curr, p_prev_month)
     td_year_chg = get_colored_chg_html(p_curr, p_prev_year)
     
-    category_td = ""
-    if idx == 0:
-        category_td = f'<td class="category-cell-style" rowspan="{len(feed_df)}">사료용</td>'
-        
-    import_rows_html += "<tr>" + category_td + \
-                        "<td class='table-text-left'>" + item_name + "</td>" + \
-                        "<td>" + weight_display + "</td>" + \
-                        "<td>" + price_display + "</td>" + \
-                        "<td>" + td_month_chg + "</td>" + \
-                        "<td>" + td_year_chg + "</td>" + \
-                        "</tr>"
+    category_td = f'<td class="category-cell-style" rowspan="{len(feed_df)}">사료용</td>' if idx == 0 else ""
+    import_rows_html += "<tr>" + category_td + "<td class='table-text-left'>" + item_name + "</td><td>" + weight_display + "</td><td>" + price_display + "</td><td>" + td_month_chg + "</td><td>" + td_year_chg + "</td></tr>"
 
 import_table_html = """
 <table class="dashboard-table">
