@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 # ==========================================
@@ -113,7 +113,7 @@ latest = df_macro.iloc[-1]
 prev_day = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_year = df_macro.iloc[-252] if len(df_macro) > 252 else df_macro.iloc[0]
 
-# 상단 타이틀 일자 연동 및 헤더용 날짜 가공 (예: 6월 18일)
+# 상단 타이틀 일자 연동 및 헤더용 날짜 가공
 latest_macro_date = df_macro.index.max()
 latest_macro_date_str = latest_macro_date.strftime('%Y.%m.%d')
 header_date_style = f"{latest_macro_date.month}월 {latest_macro_date.day}일"
@@ -191,7 +191,7 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 2. 상단 상위 지표 영역 (시트 연동형)
+# 2. 상단 상위 지표 영역
 # ==========================================
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1: render_metric_card("🌾 밀 선물", latest['밀_달러톤'], prev_day['밀_달러톤'], prev_year['밀_달러톤'])
@@ -203,7 +203,7 @@ with col5: render_metric_card("📊 콩/옥수수 비율", latest['콩_옥수수
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 3. 구글 뉴스 로이터 / 블룸버그 기반 자동 시황 크롤링 엔진
+# 3. 주요 곡물 일일 시황 및 뉴스 자동 크롤링 영역
 # ==========================================
 @st.cache_data(ttl=600)
 def fetch_grain_market_reasons():
@@ -233,49 +233,40 @@ def fetch_grain_market_reasons():
 
 grain_reasons = fetch_grain_market_reasons()
 
-# [요청 1 반영] 주요 곡물 일일 시황 타이틀 변경 및 동적 날짜 결합
 st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 st.markdown(f"""
 <div class="reason-section-box">
     <div class="reason-card" style="border-left-color: #1e3a8a;">
-        <div class="reason-card-title">🌾 밀 선물</div>
+        <div class="reason-card-title">🌾 밀 선물 (Wheat Briefing)</div>
         <div class="reason-card-text">{grain_reasons['wheat']}</div>
     </div>
     <div class="reason-card" style="border-left-color: #ea580c;">
-        <div class="reason-card-title">🌽 옥수수 선물</div>
+        <div class="reason-card-title">🌽 옥수수 선물 (Corn Briefing)</div>
         <div class="reason-card-text">{grain_reasons['corn']}</div>
     </div>
     <div class="reason-card" style="border-left-color: #b45309;">
-        <div class="reason-card-title">🥜 콩 선물</div>
+        <div class="reason-card-title">🥜 콩 선물 (Soybean Briefing)</div>
         <div class="reason-card-text">{grain_reasons['soybean']}</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 4. 곡물 외부 거시/물류/원자재 자동 크롤링 엔진 (요청 3, 4 반영)
-# ==========================================
 @st.cache_data(ttl=600)
 def fetch_global_macro_news():
     news_items = []
-    # 곡물 시황 이외의 에너지, 거시경제, 환율, 해상물류 핵심 외신 탐색 쿼리
     macro_query = "(omdc OR 'crude oil' OR freight OR Fed interest OR logistics OR tariff) (reuters OR bloomberg)"
     try:
         url = f"https://news.google.com/rss/search?q={quote(macro_query)}&hl=ko&gl=KR&ceid=KR:ko"
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.content, features="xml")
         articles = soup.findAll("item")
-        
         for article in articles:
             title = article.title.text.split(" - ")[0]
             source = article.title.text.split(" - ")[1] if " - " in article.title.text else "외신종합"
-            
-            # 곡물 자체 단수 시황 뉴스는 필터링 제외
             if any(k in title.lower() for k in ["cbot", "소맥", "옥수수 가격", "대두 가격"]): continue
             if any(k in source for k in ["KREI", "한국농촌경제연구원", "농촌경제연구원"]): continue
-                
             news_items.append({"tag": source, "content": title})
-            if len(news_items) == 4: break # 3~5개 조건 충족
+            if len(news_items) == 4: break
     except: pass
     if not news_items:
         news_items = [
@@ -289,20 +280,59 @@ def fetch_global_macro_news():
 macro_news_list = fetch_global_macro_news()
 
 # ==========================================
-# 5. 중간 분할 레이아웃
+# 4. 중간 분할 레이아웃 (기간 필터 완전 개편)
 # ==========================================
 main_col_left, main_col_right = st.columns([3, 2])
 
 with main_col_left:
     st.markdown('<div class="section-title">📊 곡물 가격 추이</div>', unsafe_allow_html=True)
-    selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
     
-    days_to_filter = 90 # 기본 3달 세팅 고정
-    filtered_df = df_macro.tail(days_to_filter).copy()
+    # 상단 컨트롤러 정렬 (곡물 선택 및 기간 지정)
+    c1, c2 = st.columns([2, 2])
+    with c1: selected_grain = st.selectbox("곡물 선택 :", ["국제곡물 선물가격지수", "밀", "옥수수", "콩", "쌀"], index=0)
+    with c2:
+        # [교정 완료] 요청하신 시계열 맞춤 기간 지정 조건 적용
+        period_options = ["1개월", "6개월", "1년", "3년", "5년", "10년", "기간 설정"]
+        selected_period = st.selectbox("조회 기간 :", period_options, index=2) # 기본값 1년
+    
+    # 기획된 선택 조건별 역산 알고리즘 처리
+    max_available_date = df_macro.index.max()
+    
+    if selected_period == "1개월":
+        start_date = max_available_date - pd.Timedelta(days=30)
+    elif selected_period == "6개월":
+        start_date = max_available_date - pd.Timedelta(days=182)
+    elif selected_period == "1년":
+        start_date = max_available_date - pd.Timedelta(days=365)
+    elif selected_period == "3년":
+        start_date = max_available_date - pd.Timedelta(days=1095)
+    elif selected_period == "5년":
+        start_date = max_available_date - pd.Timedelta(days=1825)
+    elif selected_period == "10년":
+        start_date = max_available_date - pd.Timedelta(days=3650)
+    else:  # "기간 설정" 맞춤 선택 시 달력 양식 활성화
+        st.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+        date_range = st.date_input(
+            "분석 범위 지정:",
+            value=(max_available_date - pd.Timedelta(days=365), max_available_date),
+            min_value=df_macro.index.min().to_pydatetime(),
+            max_value=max_available_date.to_pydatetime()
+        )
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_date, end_date = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
+        else:
+            start_date, end_date = max_available_date - pd.Timedelta(days=365), max_available_date
+
+    # 기간 설정 모드가 아닐 때는 종료일을 무조건 최신 수집 데이터일까지 할당
+    if selected_period != "기간 설정":
+        end_date = max_available_date
+
+    # 데이터 서브셋 슬라이싱 및 이동평균선(5MA) 보정
+    filtered_df = df_macro.loc[start_date:end_date].copy()
     chart_target = '국제곡물_선물가격지수' if selected_grain == "국제곡물 선물가격지수" else f"{selected_grain}_달러톤"
     
-    if filtered_df[chart_target].isna().all():
-        st.warning("분석할 시황 데이터가 시트에 존재하지 않습니다.")
+    if filtered_df.empty or filtered_df[chart_target].isna().all():
+        st.warning("선택한 범위 내에 분석할 가격 시황 데이터가 시트에 존재하지 않습니다.")
     else:
         filtered_df[chart_target] = filtered_df[chart_target].apply(lambda x: clean_numeric(x) if pd.notna(x) else None)
         filtered_df[chart_target] = filtered_df[chart_target].interpolate(method='linear', limit_direction='both')
@@ -315,7 +345,6 @@ with main_col_left:
         st.plotly_chart(fig, use_container_width=True)
 
 with main_col_right:
-    # [요청 2 반영] 주요 뉴스 타이틀 변경 및 동적 일자 결합
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
     for item in macro_news_list:
         st.markdown(f'<li class="news-item"><span class="news-tag">{item["tag"]}</span>{item["content"]}</li>', unsafe_allow_html=True)
@@ -344,7 +373,7 @@ with main_col_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 6. 하단 수입 추이 영역
+# 5. 하단 수입 추이 영역
 # ==========================================
 df_import_raw['날짜'] = pd.to_datetime(df_import_raw['날짜'])
 latest_import_date = df_import_raw['날짜'].max()
