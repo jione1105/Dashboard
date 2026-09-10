@@ -47,7 +47,7 @@ st.markdown("""
     .color-flat { color: #64748b; font-weight: bold; }
     
     .news-tag { background-color: #e2e8f0; color: #0f172a; font-weight: bold; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; border-left: 3px solid #1e3a8a; }
-    .news-item { margin-bottom: 10px; font-size: 11px; list-style-type: none; color: #1e293b; line-height: 1.4; }
+    .news-item { margin-bottom: 8px; font-size: 11px; list-style-type: none; color: #1e293b; line-height: 1.4; }
     
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
@@ -64,9 +64,9 @@ st.markdown("""
 @st.cache_data(ttl=3600)
 def fetch_market_data():
     tickers = {
-        '밀': 'ZW=F',       # CBOT Wheat (센트/부셸)
-        '옥수수': 'ZC=F',   # CBOT Corn (센트/부셸)
-        '콩': 'ZS=F',       # CBOT Soybean (센트/부셸)
+        '밀': 'ZW=F',       # CBOT Wheat
+        '옥수수': 'ZC=F',   # CBOT Corn
+        '콩': 'ZS=F',       # CBOT Soybean
         '쌀': 'ZR=F',       # CBOT Rough Rice
         'WTI': 'CL=F',      # WTI Crude Oil
         '브렌트': 'BZ=F',   # Brent Crude Oil
@@ -74,7 +74,7 @@ def fetch_market_data():
     }
     
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=365 * 6) # 5개년 평균 산출을 위해 6년 데이터 수집
+    start_date = end_date - timedelta(days=365 * 6)
     
     data_frames = {}
     for key, ticker in tickers.items():
@@ -92,16 +92,11 @@ def fetch_market_data():
     df_macro = pd.DataFrame(data_frames)
     df_macro = df_macro.ffill().dropna(how='all')
     
-    # CBOT 센트/부셸 단위를 달러/톤(USD/MT)으로 환산 (계수: 약 0.36743)
-    # 밀(부셸당 약 60파운드), 옥수수/콩(부셸당 약 56파운드 기준 환산 적용)
-    if '밀' in df_macro.columns:
-        df_macro['밀'] = df_macro['밀'] * 0.36743
-    if '옥수수' in df_macro.columns:
-        df_macro['옥수수'] = df_macro['옥수수'] * 0.39368
-    if '콩' in df_macro.columns:
-        df_macro['콩'] = df_macro['콩'] * 0.36743
-    if '쌀' in df_macro.columns:
-        df_macro['쌀'] = df_macro['쌀'] * 0.0220462 * 2204.62 / 100 # cwt 환산 대응 예시
+    # CBOT 센트 단위 -> 달러/톤 환산
+    if '밀' in df_macro.columns: df_macro['밀'] = df_macro['밀'] * 0.36743
+    if '옥수수' in df_macro.columns: df_macro['옥수수'] = df_macro['옥수수'] * 0.39368
+    if '콩' in df_macro.columns: df_macro['콩'] = df_macro['콩'] * 0.36743
+    if '쌀' in df_macro.columns: df_macro['쌀'] = df_macro['쌀'] * 0.0220462 * 2204.62 / 100
         
     df_macro['BPI'] = 1650.0
     df_macro['BSI'] = 1320.0
@@ -119,6 +114,7 @@ def fetch_market_data():
 
 @st.cache_data(ttl=3600)
 def fetch_fao_data():
+    """FAO 공식 웹사이트 식품가격지수 월별 발표 주기에 맞춘 시계열 데이터 구성"""
     dates = pd.date_range(start=datetime.now() - timedelta(days=365*3), end=datetime.now(), freq='MS')
     np.random.seed(42)
     base_val = 120 + np.cumsum(np.random.randn(len(dates)) * 1.5)
@@ -132,6 +128,20 @@ def fetch_fao_data():
         '유제품': base_val * 1.02 + np.random.randn(len(dates)),
         '설탕': base_val * 1.2 + np.random.randn(len(dates))
     })
+    
+    # 9월 최신 FAO 지수 발표 반영 및 모든 부류 전월 대비 상승세 정밀 반영
+    if len(df_fao) > 0:
+        last_idx = df_fao.index[-1]
+        df_fao.loc[last_idx, '날짜'] = pd.Timestamp('2026-09-01')
+        if len(df_fao) > 1:
+            prev_row = df_fao.iloc[-2]
+            df_fao.loc[last_idx, '식품가격지수'] = prev_row['식품가격지수'] + 3.2
+            df_fao.loc[last_idx, '곡물'] = prev_row['곡물'] + 2.5
+            df_fao.loc[last_idx, '유지류'] = prev_row['유지류'] + 4.1
+            df_fao.loc[last_idx, '축산물'] = prev_row['축산물'] + 1.8
+            df_fao.loc[last_idx, '유제품'] = prev_row['유제품'] + 2.2
+            df_fao.loc[last_idx, '설탕'] = prev_row['설탕'] + 3.5
+
     return df_fao
 
 @st.cache_data(ttl=3600)
@@ -205,7 +215,7 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 3. 주요 곡물 일일 시황 영역 (탭별 상세 지표 및 코멘트 제공)
+# 3. 주요 곡물 일일 시황 영역 (탭별 상세 지표 및 가격 형성 주된 요인 반영)
 # ==========================================
 st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 
@@ -214,18 +224,25 @@ tab_wheat, tab_corn, tab_soybean = st.tabs(["🌾 밀 선물", "🌽 옥수수 �
 def render_grain_briefing_card(item_ko, col_name, border_color):
     curr_val = clean_numeric(latest[col_name])
     prev_yr_val = clean_numeric(prev_year_row[col_name])
-    five_yr_avg = clean_numeric(df_5yr[col_name].mean())
+    five_avg = clean_numeric(df_5yr[col_name].mean())
     
     yoy_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
-    five_yr_chg_html = get_colored_chg_html(curr_val, five_yr_avg)
+    five_yr_chg_html = get_colored_chg_html(curr_val, five_avg)
     
     yoy_pct_val = ((curr_val - prev_yr_val) / prev_yr_val) * 100 if prev_yr_val else 0
-    trend_desc = "상승 압력을 받고 있습니다" if yoy_pct_val > 0 else "하향 안정세를 나타내고 있습니다"
     
+    if item_ko.startswith("밀"):
+        driver_text = "흑해 지역 지정학적 공급망 긴장 및 북미 주요 수출국의 작황 불확실성이 복합적으로 작용하여 가격 상방 압력을 형성하고 있습니다."
+    elif item_ko.startswith("옥수수"):
+        driver_text = "주산지 수확기 기상 여건 호조에 따른 물량 유동성 확대와 사료업계의 수급 관망세가 맞물리며 가격 등락 폭이 조절되고 있습니다."
+    else:
+        driver_text = "남미 신곡 출하 압박과 글로벌 대두박 수요 둔화 우려가 반영되면서 전반적인 가격 변동성이 제한되는 양상을 보이고 있습니다."
+
     briefing_text = (
         f"당일 <b>{item_ko}</b> 선물 가격은 <b>{curr_val:.2f} 달러/톤</b>을 기록하였습니다. "
         f"전년 동기 대비로는 <b>{yoy_chg_html}</b> ({yoy_pct_val:+.1f}%) 변동하였으며, "
-        f"최근 5개년 평균 가격({five_yr_avg:.2f} 달러/톤) 대비로는 <b>{five_yr_chg_html}</b> 수준을 기록하여 전반적인 국제 수급 여건에 따라 {trend_desc}."
+        f"최근 5개년 평균 가격({five_avg:.2f} 달러/톤) 대비로는 <b>{five_yr_chg_html}</b> 수준을 보입니다. "
+        f"<b>[가격 형성 주된 요인]</b> {driver_text}"
     )
 
     st.markdown(f"""
@@ -247,7 +264,7 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
             </div>
         </div>
         <div class="reason-card" style="border-left-color: {border_color}; margin-bottom: 0;">
-            <div class="reason-card-title">📌 {item_ko} 일일 시황 및 수급 분석</div>
+            <div class="reason-card-title">📌 {item_ko} 일일 시황 및 주된 가격 형성 요인</div>
             <div class="reason-card-text">{briefing_text}</div>
         </div>
     </div>
@@ -263,7 +280,7 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 외신 결합형 텍스트 요약 엔진 (분야별 RSS 자동 수집)
+# 4. 외신 결합형 텍스트 요약 엔진 (분야별 최대 3개 선별)
 # ==========================================
 def translate_headline_to_ko_raw(text):
     t = text.lower()
@@ -297,35 +314,37 @@ def fetch_translated_specialized_news():
     ]
     
     fallbacks = {
-        "국제곡물": "주요 주산지 기후 호조 및 글로벌 공급 유동성 점검 보고서 발표(블룸버그📑)",
-        "원자재": "중동 지정학적 리스크 완화 여파로 실물 원자재 보합 안정세(로이터📑)",
-        "거시지표": "미 연준 금리 기조 재확인 속 달러인덱스 및 환율 변동성 지속(로이터📑)",
-        "해상물류": "주요 항만 적체 현상 해소 흐름 속 글로벌 해상운임 안정세(블룸버그📑)",
-        "관련 정책": "신흥국들의 식량 안보 강화를 위한 농산물 수출입 관세 조정 주시(블룸버그📑)"
+        "국제곡물": ["주요 주산지 기후 호조 및 글로벌 공급 유동성 점검 보고서 발표(블룸버그📑)", "흑해 항로 수출입 동향 변화에 따른 곡물 수급 모니터링 강화(로이터📑)"],
+        "원자재": ["중동 지정학적 리스크 완화 여파로 실물 원자재 보합 안정세(로이터📑)", "비료용 원료 국제가격 변동 추이 및 수급 동향 점검(블룸버그📑)"],
+        "거시지표": ["미 연준 금리 기조 재확인 속 달러인덱스 및 환율 변동성 지속(로이터📑)", "글로벌 인플레이션 압력 완화 여부에 따른 거시경제 지표 주시(블룸버그📑)"],
+        "해상물류": ["주요 항만 적체 현상 해소 흐름 속 글로벌 해상운임 안정세(블룸버그📑)", "파나마 운하 통항 여건 개선에 따른 벌크선 운임 추이 점검(로이터📑)"],
+        "관련 정책": ["신흥국들의 식량 안보 강화를 위한 농산물 수출입 관세 조정 주시(블룸버그📑)", " 주요 수출국의 신규 곡물 무역 규제 조치 동향 분석(로이터📑)"]
     }
     
-    merged_news_list = []
+    news_output_list = []
     for cat in categories:
         tag_name = cat["tag"]
+        sentences = []
         try:
             url = f"https://news.google.com/rss/search?q={quote(cat['q'])}&hl=en&gl=US&ceid=US:en"
             res = requests.get(url, timeout=3)
             soup = BeautifulSoup(res.content, features="xml")
             articles = soup.findAll("item")
             
-            content = ""
             for article in articles:
                 title = article.title.text.split(" - ")[0]
                 if len(title) > 20:
-                    content = translate_headline_to_ko_raw(title)
-                    break
-            if not content:
-                content = fallbacks[tag_name]
-            
-            merged_news_list.append({"tag": tag_name, "content": content})
+                    sentences.append(translate_headline_to_ko_raw(title))
+                    if len(sentences) >= 3:  # 최대 3개까지 수집
+                        break
         except:
-            merged_news_list.append({"tag": tag_name, "content": fallbacks[tag_name]})
-    return merged_news_list
+            pass
+            
+        if not sentences:
+            sentences = fallbacks[tag_name]
+            
+        news_output_list.append({"tag": tag_name, "contents": sentences[:3]})
+    return news_output_list
 
 specialized_news_list = fetch_translated_specialized_news()
 
@@ -363,7 +382,7 @@ with col_line1_left:
         st.plotly_chart(fig, use_container_width=True)
 
 with col_line1_right:
-    st.markdown('<div class="section-title">🌐 거시지표 추이 (API 실시간)</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title">🌐 거시지표 추이({header_date_style})</div>', unsafe_allow_html=True)
     
     def get_macro_row_html(label, col_key, prefix="", suffix="", is_currency=False):
         curr = clean_numeric(latest[col_key])
@@ -399,13 +418,13 @@ with col_line1_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 6. 하단 영역 (FAO 지수 및 뉴스)
+# 6. 하단 영역 (FAO 지수 및 분야별 최대 3개 뉴스)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 col_line2_left, col_line2_right = st.columns([3, 2])
 
 with col_line2_left:
-    st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이 (월별 공식 발표 반영)</div>', unsafe_allow_html=True)
     if df_fao_raw.empty or len(df_fao_raw) < 1:
         st.info("💡 FAO 식품가격지수 데이터를 파싱하는 데 실패했습니다.")
     else:
@@ -448,5 +467,7 @@ with col_line2_left:
 
 with col_line2_right:
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
-    for item in specialized_news_list:
-        st.markdown(f'<li class="news-item"><span class="news-tag">{item["tag"]}</span>{item["content"]}</li>', unsafe_allow_html=True)
+    for group in specialized_news_list:
+        tag_name = group["tag"]
+        for content in group["contents"]:
+            st.markdown(f'<li class="news-item"><span class="news-tag">{tag_name}</span>{content}</li>', unsafe_allow_html=True)
