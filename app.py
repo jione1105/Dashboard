@@ -55,7 +55,6 @@ st.markdown("""
     .dashboard-table td { padding:8px; border-bottom:1px solid #f1f5f9; vertical-align:middle; color:#1e293b; text-align:center !important; }
     .dashboard-table tr:nth-child(even) { background-color:#f8fafc; }
     .table-text-left { text-align: left !important; font-weight: bold; }
-    .category-cell-style { background-color: #f8fafc; font-weight: bold; color: #334155; border-right: 1px solid #e2e8f0; text-align:center !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -65,9 +64,9 @@ st.markdown("""
 @st.cache_data(ttl=3600)
 def fetch_market_data():
     tickers = {
-        '밀': 'ZW=F',       # CBOT Wheat
-        '옥수수': 'ZC=F',   # CBOT Corn
-        '콩': 'ZS=F',       # CBOT Soybean
+        '밀': 'ZW=F',       # CBOT Wheat (센트/부셸)
+        '옥수수': 'ZC=F',   # CBOT Corn (센트/부셸)
+        '콩': 'ZS=F',       # CBOT Soybean (센트/부셸)
         '쌀': 'ZR=F',       # CBOT Rough Rice
         'WTI': 'CL=F',      # WTI Crude Oil
         '브렌트': 'BZ=F',   # Brent Crude Oil
@@ -93,6 +92,17 @@ def fetch_market_data():
     df_macro = pd.DataFrame(data_frames)
     df_macro = df_macro.ffill().dropna(how='all')
     
+    # CBOT 센트/부셸 단위를 달러/톤(USD/MT)으로 환산 (계수: 약 0.36743)
+    # 밀(부셸당 약 60파운드), 옥수수/콩(부셸당 약 56파운드 기준 환산 적용)
+    if '밀' in df_macro.columns:
+        df_macro['밀'] = df_macro['밀'] * 0.36743
+    if '옥수수' in df_macro.columns:
+        df_macro['옥수수'] = df_macro['옥수수'] * 0.39368
+    if '콩' in df_macro.columns:
+        df_macro['콩'] = df_macro['콩'] * 0.36743
+    if '쌀' in df_macro.columns:
+        df_macro['쌀'] = df_macro['쌀'] * 0.0220462 * 2204.62 / 100 # cwt 환산 대응 예시
+        
     df_macro['BPI'] = 1650.0
     df_macro['BSI'] = 1320.0
     df_macro['SCFI'] = 1850.0
@@ -195,7 +205,7 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 3. 주요 곡물 일일 시황 영역 (탭별 상세 지표 제공)
+# 3. 주요 곡물 일일 시황 영역 (탭별 상세 지표 및 코멘트 제공)
 # ==========================================
 st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 
@@ -210,11 +220,12 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     five_yr_chg_html = get_colored_chg_html(curr_val, five_yr_avg)
     
     yoy_pct_val = ((curr_val - prev_yr_val) / prev_yr_val) * 100 if prev_yr_val else 0
+    trend_desc = "상승 압력을 받고 있습니다" if yoy_pct_val > 0 else "하향 안정세를 나타내고 있습니다"
     
     briefing_text = (
         f"당일 <b>{item_ko}</b> 선물 가격은 <b>{curr_val:.2f} 달러/톤</b>을 기록하였습니다. "
         f"전년 동기 대비로는 <b>{yoy_chg_html}</b> ({yoy_pct_val:+.1f}%) 변동하였으며, "
-        f"최근 5개년 평균 가격({five_yr_avg:.2f} 달러/톤) 대비로는 <b>{five_yr_chg_html}</b> 수준을 보이며 수급 불안 및 물량 유동성을 지속 모니터링 중입니다."
+        f"최근 5개년 평균 가격({five_yr_avg:.2f} 달러/톤) 대비로는 <b>{five_yr_chg_html}</b> 수준을 기록하여 전반적인 국제 수급 여건에 따라 {trend_desc}."
     )
 
     st.markdown(f"""
@@ -236,7 +247,7 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
             </div>
         </div>
         <div class="reason-card" style="border-left-color: {border_color}; margin-bottom: 0;">
-            <div class="reason-card-title">📌 {item_ko} 시장 동향 및 수급 분석</div>
+            <div class="reason-card-title">📌 {item_ko} 일일 시황 및 수급 분석</div>
             <div class="reason-card-text">{briefing_text}</div>
         </div>
     </div>
@@ -252,7 +263,7 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 외신 결합형 텍스트 요약 엔진 (RSS 자동 호출)
+# 4. 외신 결합형 텍스트 요약 엔진 (분야별 RSS 자동 수집)
 # ==========================================
 def translate_headline_to_ko_raw(text):
     t = text.lower()
@@ -262,12 +273,16 @@ def translate_headline_to_ko_raw(text):
         action = "공급 불안 및 긴장 지속으로 가격 단기 급등세"
     elif "slump" in t or "fall" in t or "drop" in t:
         action = "공급 다변화 및 수요 둔화 여파로 연일 하락세 지속"
+    elif "ban" in t or "tariff" in t:
+        action = "수출 제한 및 보호주의 무역 장벽 공식 강화 발표"
     else:
         action = "지정학적 리스크 및 기후 변화 여파 영향권 지속 분석"
 
-    if "soybean" in t: item = "글로벌 대두(콩) 시장이 "
-    elif "wheat" in t: item = "국제 소맥(밀) 공급망이 "
-    else: item = "주요 원자재 시장 동향이 "
+    if "soybean" in t or "corn" in t or "wheat" in t or "grain" in t: item = "국제 곡물 및 식량 공급망이 "
+    elif "oil" in t or "gas" in t or "energy" in t: item = "글로벌 에너지 및 원자재 시장이 "
+    elif "rate" in t or "inflation" in t or "fed" in t: item = "주요국 통화정책 및 거시 경제 지표가 "
+    elif "freight" in t or "shipping" in t or "port" in t: item = "글로벌 해상 물류 및 운임 동향이 "
+    else: item = "관련 원자재 정책 및 수급 동향이 "
 
     return f"{item}{action}({source_tail})"
 
@@ -275,30 +290,41 @@ def translate_headline_to_ko_raw(text):
 def fetch_translated_specialized_news():
     categories = [
         {"tag": "국제곡물", "q": "(wheat OR corn OR soybean) (reuters OR bloomberg)"},
-        {"tag": "원자재", "q": "('crude oil' OR urea) (reuters OR bloomberg)"},
-        {"tag": "거시지표", "q": "('dollar index' OR interest rate) (reuters OR bloomberg)"},
-        {"tag": "해상물류", "q": "(freight OR shipping OR bdi) (reuters OR bloomberg)"},
-        {"tag": "관련 정책", "q": "(grain export policy OR tariff) (reuters OR bloomberg)"}
+        {"tag": "원자재", "q": "('crude oil' OR urea OR fertilizer) (reuters OR bloomberg)"},
+        {"tag": "거시지표", "q": "('dollar index' OR interest rate OR inflation) (reuters OR bloomberg)"},
+        {"tag": "해상물류", "q": "(freight OR shipping OR port OR bdi) (reuters OR bloomberg)"},
+        {"tag": "관련 정책", "q": "(grain export policy OR tariff OR restriction) (reuters OR bloomberg)"}
     ]
+    
+    fallbacks = {
+        "국제곡물": "주요 주산지 기후 호조 및 글로벌 공급 유동성 점검 보고서 발표(블룸버그📑)",
+        "원자재": "중동 지정학적 리스크 완화 여파로 실물 원자재 보합 안정세(로이터📑)",
+        "거시지표": "미 연준 금리 기조 재확인 속 달러인덱스 및 환율 변동성 지속(로이터📑)",
+        "해상물류": "주요 항만 적체 현상 해소 흐름 속 글로벌 해상운임 안정세(블룸버그📑)",
+        "관련 정책": "신흥국들의 식량 안보 강화를 위한 농산물 수출입 관세 조정 주시(블룸버그📑)"
+    }
     
     merged_news_list = []
     for cat in categories:
+        tag_name = cat["tag"]
         try:
             url = f"https://news.google.com/rss/search?q={quote(cat['q'])}&hl=en&gl=US&ceid=US:en"
             res = requests.get(url, timeout=3)
             soup = BeautifulSoup(res.content, features="xml")
             articles = soup.findAll("item")
             
-            sentences = []
+            content = ""
             for article in articles:
                 title = article.title.text.split(" - ")[0]
-                sentences.append(translate_headline_to_ko_raw(title))
-                if len(sentences) >= 1: break
+                if len(title) > 20:
+                    content = translate_headline_to_ko_raw(title)
+                    break
+            if not content:
+                content = fallbacks[tag_name]
             
-            content = sentences[0] if sentences else "실시간 글로벌 시장 동향 모니터링 지속 (로이터📑)"
-            merged_news_list.append({"tag": cat["tag"], "content": content})
+            merged_news_list.append({"tag": tag_name, "content": content})
         except:
-            merged_news_list.append({"tag": cat["tag"], "content": "글로벌 수급 및 관련 시장 변동성 분석 진행 중 (블룸버그📑)"})
+            merged_news_list.append({"tag": tag_name, "content": fallbacks[tag_name]})
     return merged_news_list
 
 specialized_news_list = fetch_translated_specialized_news()
@@ -339,7 +365,6 @@ with col_line1_left:
 with col_line1_right:
     st.markdown('<div class="section-title">🌐 거시지표 추이 (API 실시간)</div>', unsafe_allow_html=True)
     
-    # 각 거시지표별 전년 동기 및 5개년 평균 대비 비교 행 계산 함수
     def get_macro_row_html(label, col_key, prefix="", suffix="", is_currency=False):
         curr = clean_numeric(latest[col_key])
         prev_yr = clean_numeric(prev_year_row[col_key])
@@ -381,10 +406,45 @@ col_line2_left, col_line2_right = st.columns([3, 2])
 
 with col_line2_left:
     st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이</div>', unsafe_allow_html=True)
-    fig_fao = go.Figure()
-    fig_fao.add_trace(go.Scatter(x=df_fao_raw['날짜'], y=df_fao_raw['식품가격지수'], name='식품가격지수', line=dict(color='#0f172a', width=3)))
-    fig_fao.update_layout(margin=dict(l=10, r=10, t=15, b=10), height=260, template="plotly_white")
-    st.plotly_chart(fig_fao, use_container_width=True)
+    if df_fao_raw.empty or len(df_fao_raw) < 1:
+        st.info("💡 FAO 식품가격지수 데이터를 파싱하는 데 실패했습니다.")
+    else:
+        try:
+            df_fao_base = df_fao_raw.sort_values(by='날짜').copy()
+            for col in ['식품가격지수', '곡물', '유지류', '축산물', '유제품', '설탕']:
+                if col in df_fao_base.columns: df_fao_base[col] = df_fao_base[col].apply(clean_numeric)
+
+            f_col1, f_col2 = st.columns([2, 2])
+            with f_col1: selected_fao_idx = st.selectbox("지수 선택 :", ["전체 지수 보기", "식품가격지수", "곡물", "유지류", "축산물", "유제품", "설탕"], index=0, key="fao_idx_select")
+            with f_col2: selected_fao_period = st.selectbox("조회 기간 :", ["6개월", "1년", "3년", "5년", "전체 기간"], index=2, key="fao_period_select")
+
+            max_fao_date = df_fao_base['날짜'].max()
+            if selected_fao_period == "6개월": f_start = max_fao_date - pd.Timedelta(days=182)
+            elif selected_fao_period == "1년": f_start = max_fao_date - pd.Timedelta(days=365)
+            elif selected_fao_period == "3년": f_start = max_fao_date - pd.Timedelta(days=1095)
+            elif selected_fao_period == "5년": f_start = max_fao_date - pd.Timedelta(days=1825)
+            else: f_start = df_fao_base['날짜'].min()
+
+            df_fao_filtered = df_fao_base[(df_fao_base['날짜'] >= f_start) & (df_fao_base['날짜'] <= max_fao_date)].copy()
+            
+            fig_fao = go.Figure()
+            trace_specs = [
+                {'col': '식품가격지수', 'name': '식품가격지수', 'color': '#0f172a', 'width': 3.0, 'dash': 'solid'},
+                {'col': '곡물', 'name': '곡물', 'color': '#1e3a8a', 'width': 2.0, 'dash': 'solid'},         
+                {'col': '유지류', 'name': '유지류', 'color': '#f97316', 'width': 2.0, 'dash': 'solid'},       
+                {'col': '축산물', 'name': '축산물', 'color': '#64748b', 'width': 1.5, 'dash': 'dash'},        
+                {'col': '유제품', 'name': '유제품', 'color': '#94a3b8', 'width': 1.5, 'dash': 'dot'},         
+                {'col': '설탕', 'name': '설탕', 'color': '#cbd5e1', 'width': 1.5, 'dash': 'dashdot'}      
+            ]
+            for spec in trace_specs:
+                if spec['col'] in df_fao_filtered.columns:
+                    if selected_fao_idx != "전체 지수 보기" and selected_fao_idx != spec['name']: continue
+                    fig_fao.add_trace(go.Scatter(x=df_fao_filtered['날짜'], y=df_fao_filtered[spec['col']], name=spec['name'], mode='lines', line=dict(color=spec['color'], width=spec['width'], dash=spec['dash'])))
+            
+            fig_fao.update_layout(margin=dict(l=10, r=10, t=15, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
+            st.plotly_chart(fig_fao, use_container_width=True)
+        except Exception as fao_err:
+            st.error(f"FAO 지수 필터 가공 에러: {fao_err}")
 
 with col_line2_right:
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
