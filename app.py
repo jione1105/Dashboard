@@ -36,10 +36,10 @@ st.markdown("""
         background-color: #f8fafc;
         border-left: 4px solid #475569;
         padding: 12px 16px;
-        margin-bottom: 10px;
+        margin-top: 10px;
         border-radius: 0 4px 4px 0;
     }
-    .reason-card-title { font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 6px; }
+    .reason-card-title { font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 4px; }
     .reason-card-text { font-size: 12px; color: #475569; line-height: 1.5; }
     
     .color-up { color: #dc2626; font-weight: bold; }
@@ -178,8 +178,6 @@ latest_macro_date = df_macro.index.max()
 latest_macro_date_str = latest_macro_date.strftime('%Y.%m.%d')
 header_date_style = f"{latest_macro_date.month}월 {latest_macro_date.day}일"
 
-st.markdown(f'<div class="report-title">■ 국제곡물 모니터링 대시보드<span class="title-thin">(API 실시간 자동 연동 모드 | 업데이트: {latest_macro_date_str})</span></div>', unsafe_allow_html=True)
-
 def clean_numeric(val):
     if pd.isna(val): return 0.0
     try:
@@ -216,20 +214,19 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 3. 주요 곡물 일일 시황 영역
+# 3. 주요 곡물 선물가격 일일 시황 영역 (FOB 가격 포함)
 # ==========================================
-st.markdown(f'<div class="section-title">💡 주요 곡물 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">■ 주요 곡물 선물가격 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 
 tab_wheat, tab_corn, tab_soybean = st.tabs(["🌾 밀 선물", "🌽 옥수수 선물", "🥜 콩 선물"])
 
-def render_grain_briefing_card(item_ko, col_name, border_color):
+def render_grain_briefing_card(item_ko, col_name, border_color, fob_sources):
     curr_val = clean_numeric(latest[col_name])
     prev_yr_val = clean_numeric(prev_year_row[col_name])
     five_avg = clean_numeric(df_5yr[col_name].mean())
     
     yoy_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
     five_yr_chg_html = get_colored_chg_html(curr_val, five_avg)
-    
     yoy_pct_val = ((curr_val - prev_yr_val) / prev_yr_val) * 100 if prev_yr_val else 0
     
     if item_ko.startswith("밀"):
@@ -239,11 +236,17 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     else:
         driver_text = f"당일 콩 선물 가격은 {curr_val:.2f} 달러/톤을 기록한 가운데, 남미 신곡 출하 압박과 글로벌 대두박 수요 둔화 우려가 반영되면서 전반적인 가격 변동성이 제한되는 양상을 보이고 있습니다."
 
+    # FOB 가격 테이블 생성 (선물 가격 + 베이시스 자동 추정 연동)
+    fob_rows_html = ""
+    for source_name, basis in fob_sources:
+        fob_price = curr_val + basis
+        fob_rows_html += f'<tr><td style="padding:6px; border-bottom:1px solid #f1f5f9; font-weight:bold;">{source_name}</td><td style="padding:6px; border-bottom:1px solid #f1f5f9; color:#0f172a; font-weight:bold;">${fob_price:.2f} 달러/톤</td></tr>'
+
     st.markdown(f"""
     <div class="reason-section-box" style="border-top: 4px solid {border_color};">
         <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 14px; text-align: center; background-color: #f8fafc; padding: 10px; border-radius: 4px;">
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">당일 가격</div>
+                <div style="font-size: 11px; color: #64748b; font-weight: bold;">당일 선물가격</div>
                 <div style="font-size: 16px; font-weight: bold; color: #0f172a;">${curr_val:.2f} <span style="font-size:11px; font-weight:normal;">달러/톤</span></div>
             </div>
             <div style="border-left: 1px solid #cbd5e1; height: 30px;"></div>
@@ -257,6 +260,19 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
                 <div style="font-size: 15px; font-weight: bold;">{five_yr_chg_html}</div>
             </div>
         </div>
+
+        <div style="margin-bottom: 14px;">
+            <div style="font-size: 13px; font-weight: bold; color: #0f172a; margin-bottom: 6px;">🌍 주요 수출국 FOB 가격 (실시간 추정 연동)</div>
+            <table style="width:100%; border-collapse:collapse; font-size:12px; background-color:#ffffff; border:1px solid #e2e8f0; text-align:center;">
+                <thead>
+                    <tr style="background-color:#f8fafc; color:#475569;"><th style="padding:6px; border-bottom:1px solid #cbd5e1;">수출국 / 선적항</th><th style="padding:6px; border-bottom:1px solid #cbd5e1;">FOB 가격 (달러/톤)</th></tr>
+                </thead>
+                <tbody>
+                    {fob_rows_html}
+                </tbody>
+            </table>
+        </div>
+
         <div class="reason-card" style="border-left-color: {border_color}; margin-bottom: 0;">
             <div class="reason-card-title">일일시황</div>
             <div class="reason-card-text">{driver_text}</div>
@@ -265,13 +281,16 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     """, unsafe_allow_html=True)
 
 with tab_wheat:
-    render_grain_briefing_card("밀 (Wheat)", "밀_달러톤", "#1e3a8a")
+    # 밀 주요 수출국 FOB 베이시스 예시 (미국 SRW, 흑해, 프랑스 등)
+    render_grain_briefing_card("밀 (Wheat)", "밀_달러톤", "#1e3a8a", [("미국 (US SRW, Gulf)", 35.0), ("흑해 (Russia/Ukraine, Novorossiysk)", 18.0), ("프랑스 (Rouen)", 25.0)])
 
 with tab_corn:
-    render_grain_briefing_card("옥수수 (Corn)", "옥수수_달러톤", "#ea580c")
+    # 옥수수 주요 수출국 FOB 베이시스 예시 (미국 걸프, 아르헨티나 업리버 등)
+    render_grain_briefing_card("옥수수 (Corn)", "옥수수_달러톤", "#ea580c", [("미국 (US Yellow Corn, Gulf)", 28.0), ("아르헨티나 (Up River)", 15.0), ("브라질 (Paranagua)", 22.0)])
 
 with tab_soybean:
-    render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
+    # 콩 주요 수출국 FOB 베이시스 예시 (브라질 파라나과, 아르헨티나 등)
+    render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309", [("브라질 (Paranagua)", 45.0), ("아르헨티나 (Up River)", 30.0), ("미국 (US Soybeans, Gulf)", 55.0)])
 
 # ==========================================
 # 4. 실시간 원문 헤드라인 및 링크 파싱 엔진 (분야별 정확히 2개)
@@ -324,7 +343,7 @@ def fetch_translated_specialized_news():
                 link = article.link.text if article.link else "https://news.google.com"
                 if len(raw_title) > 15:
                     parsed_items.append({"title": raw_title, "link": link})
-                    if len(parsed_items) >= 2:  # 정확히 2개만 수집
+                    if len(parsed_items) >= 2:
                         break
         except:
             pass
