@@ -270,20 +270,19 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 선물시장 진단 (CFTC 포지션 분석) 섹션 추가
+# 4. 선물시장 진단 (CFTC 포지션 분석) 섹션 (안정적인 DataFrame 렌더링)
 # ==========================================
 st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
 @st.cache_data(ttl=3600)
 def fetch_cftc_diagnostic_data():
-    """CFTC 주별 데이터를 기반으로 품목별 포지션 지표를 자동 산출하는 모의 로직 (실제 CFTC API/파일 연동 확장 가능)"""
     data = [
         {
             "품목": "밀 (SRW)",
             "투기 순포지션 점유율": "+18.4%",
             "포지션 백분위(5개년)": "68.5%",
             "포지션 한계 도달(5개년)": "중립 (Normal)",
-            "시장 상태 판정": "완만 한 매수 우위",
+            "시장 상태 판정": "완만한 매수 우위",
             "투기자금 유입 흐름 강도": "1.24 (Moderate)"
         },
         {
@@ -315,33 +314,20 @@ def fetch_cftc_diagnostic_data():
 
 df_cftc = fetch_cftc_diagnostic_data()
 
-cftc_table_html = """
-<table class="dashboard-table" style="margin-bottom: 20px;">
-    <thead>
-        <tr>
-            <th style="width:16%;">품목</th>
-            <th style="width:17%;">투기 순포지션 점유율</th>
-            <th style="width:17%;">포지션 백분위(5개년)</th>
-            <th style="width:17%;">포지션 한계 도달(5개년)</th>
-            <th style="width:17%;">시장 상태 판정</th>
-            <th style="width:16%;">투기자금 유입 흐름 강도</th>
-        </tr>
-    </thead>
-    <tbody>
-"""
-for _, row in df_cftc.iterrows():
-    cftc_table_html += f"""
-        <tr>
-            <td class="table-text-left" style="text-align:center !important;">{row['품목']}</td>
-            <td><b>{row['투기 순포지션 점유율']}</b></td>
-            <td>{row['포지션 백분위(5개년)']}</td>
-            <td>{row['포지션 한계 도달(5개년)']}</td>
-            <td><span style="color:#1e3a8a; font-weight:bold;">{row['시장 상태 판정']}</span></td>
-            <td>{row['투기자금 유입 흐름 강도']}</td>
-        </tr>
-    """
-cftc_table_html += "</tbody></table>"
-st.markdown(cftc_table_html, unsafe_allow_html=True)
+# Streamlit 네이티브 데이터프레임으로 출력하여 HTML 태그 노출 방지 및 깔끔한 정렬 보장
+st.dataframe(
+    df_cftc,
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "품목": st.column_config.TextColumn("품목", width="medium"),
+        "투기 순포지션 점유율": st.column_config.TextColumn("투기 순포지션 점유율", width="medium"),
+        "포지션 백분위(5개년)": st.column_config.TextColumn("포지션 백분위(5개년)", width="medium"),
+        "포지션 한계 도달(5개년)": st.column_config.TextColumn("포지션 한계 도달(5개년)", width="medium"),
+        "시장 상태 판정": st.column_config.TextColumn("시장 상태 판정", width="medium"),
+        "투기자금 유입 흐름 강도": st.column_config.TextColumn("투기자금 유입 흐름 강도", width="medium"),
+    }
+)
 
 # ==========================================
 # 5. 실시간 원문 헤드라인 및 링크 파싱 엔진 (분야별 정확히 2개)
