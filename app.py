@@ -47,7 +47,9 @@ st.markdown("""
     .color-flat { color: #64748b; font-weight: bold; }
     
     .news-tag { background-color: #e2e8f0; color: #0f172a; font-weight: bold; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 8px; display: inline-block; border-left: 3px solid #1e3a8a; }
-    .news-item { margin-bottom: 8px; font-size: 11px; list-style-type: none; color: #1e293b; line-height: 1.4; }
+    .news-item { margin-bottom: 10px; font-size: 11px; list-style-type: none; color: #1e293b; line-height: 1.4; }
+    .news-link { color: #1d4ed8; text-decoration: none; font-size: 11px; margin-left: 4px; }
+    .news-link:hover { text-decoration: underline; }
     
     .dashboard-table { width:100%; border-collapse:collapse; font-size:12px; font-family:'Malgun Gothic', sans-serif; text-align:center; }
     .dashboard-table thead { background-color:#f8fafc; color:#475569; }
@@ -92,13 +94,11 @@ def fetch_market_data():
     df_macro = pd.DataFrame(data_frames)
     df_macro = df_macro.ffill().dropna(how='all')
     
-    # CBOT 센트 단위 -> 달러/톤 환산
     if '밀' in df_macro.columns: df_macro['밀'] = df_macro['밀'] * 0.36743
     if '옥수수' in df_macro.columns: df_macro['옥수수'] = df_macro['옥수수'] * 0.39368
     if '콩' in df_macro.columns: df_macro['콩'] = df_macro['콩'] * 0.36743
     if '쌀' in df_macro.columns: df_macro['쌀'] = df_macro['쌀'] * 0.0220462 * 2204.62 / 100
         
-    # [수정] 해상운임 시계열 변동성 반영 (고정값 대신 최근 트렌드 기반 시계열 부여)
     np.random.seed(100)
     days_len = len(df_macro)
     df_macro['BPI'] = 1600 + np.cumsum(np.random.randn(days_len) * 10)
@@ -274,29 +274,8 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 실시간 외신 뉴스 헤드라인 정밀 요약 엔진
+# 4. 실시간 원문 헤드라인 및 링크 파싱 엔진 (분야별 정확히 2개)
 # ==========================================
-def summarize_real_headline(title):
-    """실시간 뉴스 타이틀의 핵심 키워드를 반영하여 직관적인 요약 문장 생성"""
-    t_lower = title.lower()
-    source = "로이터📑" if "reuters" in t_lower else "블룸버그📑"
-    
-    # 주요 키워드별 맞춤 요약 분기
-    if any(k in t_lower for k in ["wheat", "grain", "crop", "harvest"]):
-        core = "국제 곡물 및 주산지 작황 수급 동향 변동"
-    elif any(k in t_lower for k in ["oil", "crude", "energy", "opec"]):
-        core = "실물 원유 및 글로벌 에너지 가격 동향"
-    elif any(k in t_lower for k in ["inflation", "fed", "rate", "interest", "dollar"]):
-        core = "미 연준 통화정책 및 거시경제 지표 추이"
-    elif any(k in t_lower for k in ["freight", "shipping", "port", "bdi", "container"]):
-        core = "글로벌 해상 물류 및 선박 운임 지표 변화"
-    elif any(k in t_lower for k in ["tariff", "export", "import", "trade", "ban"]):
-        core = "국가별 농산물 수출입 관세 및 무역 정책 변화"
-    else:
-        core = "글로벌 원자재 시장 수급 및 가격 변동성"
-        
-    return f"{title} — [{core}] ({source})"
-
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
     categories = [
@@ -308,17 +287,32 @@ def fetch_translated_specialized_news():
     ]
     
     fallbacks = {
-        "국제곡물": ["Black Sea grain export volume updates and global wheat supply monitoring (로이터📑)", "South American soybean harvesting progress and export flow analysis (블룸버그📑)"],
-        "원자재": ["Crude oil prices steady amid shifting Middle East supply risk assessments (로이터📑)", "Global fertilizer and urea market price volatility review (블룸버그📑)"],
-        "거시지표": ["Federal Reserve interest rate outlook and dollar index fluctuation analysis (로이터📑)", "Global inflation trends and currency market impacts (블룸버그📑)"],
-        "해상물류": ["Dry bulk shipping index and panama canal transit update (블룸버그📑)", "Global container freight rate trends and port congestion status (로이터📑)"],
-        "관련 정책": ["New agricultural export tariff adjustments and food security measures (로이터📑)", "Major producer trade policy shifts impacting global grain flows (블룸버그📑)"]
+        "국제곡물": [
+            {"title": "Black Sea grain export volume updates and global wheat supply monitoring", "link": "https://www.reuters.com"},
+            {"title": "South American soybean harvesting progress and export flow analysis", "link": "https://www.bloomberg.com"}
+        ],
+        "원자재": [
+            {"title": "Crude oil prices steady amid shifting Middle East supply risk assessments", "link": "https://www.reuters.com"},
+            {"title": "Global fertilizer and urea market price volatility review", "link": "https://www.bloomberg.com"}
+        ],
+        "거시지표": [
+            {"title": "Federal Reserve interest rate outlook and dollar index fluctuation analysis", "link": "https://www.reuters.com"},
+            {"title": "Global inflation trends and currency market impacts", "link": "https://www.bloomberg.com"}
+        ],
+        "해상물류": [
+            {"title": "Dry bulk shipping index and panama canal transit update", "link": "https://www.bloomberg.com"},
+            {"title": "Global container freight rate trends and port congestion status", "link": "https://www.reuters.com"}
+        ],
+        "관련 정책": [
+            {"title": "New agricultural export tariff adjustments and food security measures", "link": "https://www.reuters.com"},
+            {"title": "Major producer trade policy shifts impacting global grain flows", "link": "https://www.bloomberg.com"}
+        ]
     }
     
     news_output_list = []
     for cat in categories:
         tag_name = cat["tag"]
-        sentences = []
+        parsed_items = []
         try:
             url = f"https://news.google.com/rss/search?q={quote(cat['q'])}&hl=en&gl=US&ceid=US:en"
             res = requests.get(url, timeout=3)
@@ -327,18 +321,18 @@ def fetch_translated_specialized_news():
             
             for article in articles:
                 raw_title = article.title.text.split(" - ")[0]
+                link = article.link.text if article.link else "https://news.google.com"
                 if len(raw_title) > 15:
-                    summarized = summarize_real_headline(raw_title)
-                    sentences.append(summarized)
-                    if len(sentences) >= 3:
+                    parsed_items.append({"title": raw_title, "link": link})
+                    if len(parsed_items) >= 2:  # 정확히 2개만 수집
                         break
         except:
             pass
             
-        if not sentences:
-            sentences = [summarize_real_headline(fb) for fb in fallbacks[tag_name]]
+        if not parsed_items:
+            parsed_items = fallbacks[tag_name]
             
-        news_output_list.append({"tag": tag_name, "contents": sentences[:3]})
+        news_output_list.append({"tag": tag_name, "items": parsed_items[:2]})
     return news_output_list
 
 specialized_news_list = fetch_translated_specialized_news()
@@ -413,7 +407,7 @@ with col_line1_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 6. 하단 영역 (FAO 지수 및 분야별 최대 3개 뉴스)
+# 6. 하단 영역 (FAO 지수 및 분야별 2개 뉴스 + 바로가기 링크)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 col_line2_left, col_line2_right = st.columns([3, 2])
@@ -453,7 +447,7 @@ with col_line2_left:
             for spec in trace_specs:
                 if spec['col'] in df_fao_filtered.columns:
                     if selected_fao_idx != "전체 지수 보기" and selected_fao_idx != spec['name']: continue
-                    fig_fao.add_trace(go.Scatter(x=df_fao_filtered['날`짜'], y=df_fao_filtered[spec['col']], name=spec['name'], mode='lines', line=dict(color=spec['color'], width=spec['width'], dash=spec['dash'])))
+                    fig_fao.add_trace(go.Scatter(x=df_fao_filtered['날짜'], y=df_fao_filtered[spec['col']], name=spec['name'], mode='lines', line=dict(color=spec['color'], width=spec['width'], dash=spec['dash'])))
             
             fig_fao.update_layout(margin=dict(l=10, r=10, t=15, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
             st.plotly_chart(fig_fao, use_container_width=True)
@@ -464,5 +458,7 @@ with col_line2_right:
     st.markdown(f'<div class="section-title">📰 주요 뉴스({header_date_style})</div>', unsafe_allow_html=True)
     for group in specialized_news_list:
         tag_name = group["tag"]
-        for content in group["contents"]:
-            st.markdown(f'<li class="news-item"><span class="news-tag">{tag_name}</span>{content}</li>', unsafe_allow_html=X=True) # type: ignore
+        for item in group["items"]:
+            title = item["title"]
+            link = item["link"]
+            st.markdown(f'<li class="news-item"><span class="news-tag">{tag_name}</span>{title}<a href="{link}" target="_blank" class="news-link">[원문보기 링크]</a></li>', unsafe_allow_html=True)
