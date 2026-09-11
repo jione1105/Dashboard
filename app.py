@@ -168,11 +168,21 @@ if df_macro_raw.empty:
 df_macro = df_macro_raw.sort_index()
 
 latest = df_macro.iloc[-1]
+prev_month_date = latest.name - timedelta(days=30)
 prev_year_date = latest.name - timedelta(days=365)
+
+prev_month_row = df_macro.loc[:prev_month_date].iloc[-1] if not df_macro.loc[:prev_month_date].empty else df_macro.iloc[0]
 prev_year_row = df_macro.loc[:prev_year_date].iloc[-1] if not df_macro.loc[:prev_year_date].empty else df_macro.iloc[0]
 
 five_years_ago_date = latest.name - timedelta(days=365 * 5)
 df_5yr = df_macro.loc[five_years_ago_date:latest.name]
+
+def get_trimmed_mean(series):
+    """최근 5개년 데이터 중 최대값과 최소값을 제외한 평균(절사평균) 계산"""
+    s_clean = series.dropna()
+    if len(s_clean) > 2:
+        return s_clean.drop([s_clean.idxmax(), s_clean.idxmin()]).mean()
+    return s_clean.mean()
 
 latest_macro_date = df_macro.index.max()
 latest_macro_date_str = latest_macro_date.strftime('%Y.%m.%d')
@@ -222,11 +232,15 @@ tab_wheat, tab_corn, tab_soybean = st.tabs(["🌾 밀 선물", "🌽 옥수수 �
 
 def render_grain_briefing_card(item_ko, col_name, border_color):
     curr_val = clean_numeric(latest[col_name])
+    prev_mo_val = clean_numeric(prev_month_row[col_name])
     prev_yr_val = clean_numeric(prev_year_row[col_name])
-    five_avg = clean_numeric(df_5yr[col_name].mean())
     
-    yoy_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
-    five_yr_chg_html = get_colored_chg_html(curr_val, five_avg)
+    # 평년 (최대/최소 제외 평균)
+    normal_val = get_trimmed_mean(df_5yr[col_name])
+    
+    prev_mo_chg_html = get_colored_chg_html(curr_val, prev_mo_val)
+    prev_yr_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
+    normal_chg_html = get_colored_chg_html(curr_val, normal_val)
     
     if item_ko.startswith("밀"):
         driver_text = f"당일 밀 선물 가격은 {curr_val:.2f} 달러/톤을 기록한 가운데, 흑해 지역 지정학적 공급망 긴장 및 북미 주요 수출국의 작황 불확실성이 복합적으로 작용하여 가격 상방 압력을 형성하고 있습니다."
@@ -240,17 +254,22 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
         <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 14px; text-align: center; background-color: #f8fafc; padding: 10px; border-radius: 4px;">
             <div>
                 <div style="font-size: 11px; color: #64748b; font-weight: bold;">당일 선물가격</div>
-                <div style="font-size: 16px; font-weight: bold; color: #0f172a;">${curr_val:.2f} <span style="font-size:11px; font-weight:normal;">달러/톤</span></div>
+                <div style="font-size: 15px; font-weight: bold; color: #0f172a;">${curr_val:.2f} <span style="font-size:10px; font-weight:normal;">달러/톤</span></div>
             </div>
-            <div style="border-left: 1px solid #cbd5e1; height: 30px;"></div>
+            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
+            <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전월 대비</div>
+                <div style="font-size: 14px; font-weight: bold;">{prev_mo_chg_html}</div>
+            </div>
+            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
             <div>
                 <div style="font-size: 11px; color: #64748b; font-weight: bold;">전년 동기 대비</div>
-                <div style="font-size: 15px; font-weight: bold;">{yoy_chg_html}</div>
+                <div style="font-size: 14px; font-weight: bold;">{prev_yr_chg_html}</div>
             </div>
-            <div style="border-left: 1px solid #cbd5e1; height: 30px;"></div>
+            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">5개년 평균 대비</div>
-                <div style="font-size: 15px; font-weight: bold;">{five_yr_chg_html}</div>
+                <div style="font-size: 11px; color: #64748b; font-weight: bold;">평년 대비</div>
+                <div style="font-size: 14px; font-weight: bold;">{normal_chg_html}</div>
             </div>
         </div>
         <div class="reason-card" style="border-left-color: {border_color}; margin-bottom: 0;">
@@ -270,7 +289,7 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 선물시장 진단 (안정적인 st.dataframe 방식 적용)
+# 4. 선물시장 진단
 # ==========================================
 st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
@@ -438,23 +457,26 @@ with col_line1_right:
     
     def get_macro_row_html(label, col_key, prefix="", suffix="", is_currency=False):
         curr = clean_numeric(latest[col_key])
+        prev_mo = clean_numeric(prev_month_row[col_key])
         prev_yr = clean_numeric(prev_year_row[col_key])
-        five_avg = clean_numeric(df_5yr[col_key].mean())
+        normal_val = get_trimmed_mean(df_5yr[col_key])
         
         curr_str = format_macro_val(curr, prefix, suffix, is_currency)
-        yoy_html = get_colored_chg_html(curr, prev_yr)
-        five_avg_html = get_colored_chg_html(curr, five_avg)
+        prev_mo_html = get_colored_chg_html(curr, prev_mo)
+        prev_yr_html = get_colored_chg_html(curr, prev_yr)
+        normal_html = get_colored_chg_html(curr, normal_val)
         
-        return f'<tr><td class="table-text-left">{label}</td><td>{curr_str}</td><td>{yoy_html}</td><td>{five_avg_html}</td></tr>'
+        return f'<tr><td class="table-text-left">{label}</td><td>{curr_str}</td><td>{prev_mo_html}</td><td>{prev_yr_html}</td><td>{normal_html}</td></tr>'
 
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
             <tr>
-                <th style="width:34%;">주요 지표</th>
-                <th style="width:22%;">당일 추이</th>
-                <th style="width:22%;">전년 대비</th>
-                <th style="width:22%;">5개년 평균 대비</th>
+                <th style="width:28%;">주요 지표</th>
+                <th style="width:18%;">당일 추이</th>
+                <th style="width:18%;">전월 대비</th>
+                <th style="width:18%;">전년 대비</th>
+                <th style="width:18%;">평년 대비</th>
             </tr>
         </thead>
         <tbody>
