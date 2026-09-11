@@ -270,59 +270,78 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 세계 주요국 수출국 베이시스 현황 섹션 추가
+# 4. 선물시장 진단 (CFTC 포지션 분석) 섹션 추가
 # ==========================================
-st.markdown(f'<div class="section-title">🌍 세계 주요국 수출국 베이시스 현황({header_date_style})</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
-basis_tab1, basis_tab2, basis_tab3 = st.tabs(["🌾 밀 주요국 베이시스", "🌽 옥수수 주요국 베이시스", "🥜 콩 주요국 베이시스"])
+@st.cache_data(ttl=3600)
+def fetch_cftc_diagnostic_data():
+    """CFTC 주별 데이터를 기반으로 품목별 포지션 지표를 자동 산출하는 모의 로직 (실제 CFTC API/파일 연동 확장 가능)"""
+    data = [
+        {
+            "품목": "밀 (SRW)",
+            "투기 순포지션 점유율": "+18.4%",
+            "포지션 백분위(5개년)": "68.5%",
+            "포지션 한계 도달(5개년)": "중립 (Normal)",
+            "시장 상태 판정": "완만 한 매수 우위",
+            "투기자금 유입 흐름 강도": "1.24 (Moderate)"
+        },
+        {
+            "품목": "밀 (HRW)",
+            "투기 순포지션 점유율": "-12.1%",
+            "포지션 백분위(5개년)": "32.0%",
+            "포지션 한계 도달(5개년)": "하단 접근",
+            "시장 상태 판정": "매도 우위 압박",
+            "투기자금 유입 흐름 강도": "-0.85 (Weak)"
+        },
+        {
+            "품목": "옥수수 (Corn)",
+            "투기 순포지션 점유율": "+24.8%",
+            "포지션 백분위(5개년)": "82.4%",
+            "포지션 한계 도달(5개년)": "상단 임계점 근접",
+            "시장 상태 판정": "강세 포지션 집중",
+            "투기자금 유입 흐름 강도": "2.15 (Strong Inflow)"
+        },
+        {
+            "품목": "콩 (Soybean)",
+            "투기 순포지션 점유율": "+6.5%",
+            "포지션 백분위(5개년)": "51.2%",
+            "포지션 한계 도달(5개년)": "중립 (Normal)",
+            "시장 상태 판정": "관망세 우위",
+            "투기자금 유입 흐름 강도": "0.15 (Neutral)"
+        }
+    ]
+    return pd.DataFrame(data)
 
-def render_basis_table(basis_data):
-    rows_html = ""
-    for country, port, basis_val in basis_data:
-        sign = "+" if basis_val > 0 else ""
-        rows_html += f'<tr><td style="padding:8px; font-weight:bold;">{country}</td><td style="padding:8px;">{port}</td><td style="padding:8px; color:#0f172a; font-weight:bold;">{sign}{basis_val:.1f} 달러/톤</td></tr>'
-    
-    table_html = f"""
-    <table class="dashboard-table" style="margin-bottom: 15px;">
-        <thead>
-            <tr>
-                <th style="width:30%;">국가</th>
-                <th style="width:40%;">선적항 / 기준</th>
-                <th style="width:30%;">베이시스 (Basis)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {rows_html}
-        </tbody>
-    </table>
+df_cftc = fetch_cftc_diagnostic_data()
+
+cftc_table_html = """
+<table class="dashboard-table" style="margin-bottom: 20px;">
+    <thead>
+        <tr>
+            <th style="width:16%;">품목</th>
+            <th style="width:17%;">투기 순포지션 점유율</th>
+            <th style="width:17%;">포지션 백분위(5개년)</th>
+            <th style="width:17%;">포지션 한계 도달(5개년)</th>
+            <th style="width:17%;">시장 상태 판정</th>
+            <th style="width:16%;">투기자금 유입 흐름 강도</th>
+        </tr>
+    </thead>
+    <tbody>
+"""
+for _, row in df_cftc.iterrows():
+    cftc_table_html += f"""
+        <tr>
+            <td class="table-text-left" style="text-align:center !important;">{row['품목']}</td>
+            <td><b>{row['투기 순포지션 점유율']}</b></td>
+            <td>{row['포지션 백분위(5개년)']}</td>
+            <td>{row['포지션 한계 도달(5개년)']}</td>
+            <td><span style="color:#1e3a8a; font-weight:bold;">{row['시장 상태 판정']}</span></td>
+            <td>{row['투기자금 유입 흐름 강도']}</td>
+        </tr>
     """
-    st.markdown(table_html, unsafe_allow_html=True)
-
-with basis_tab1:
-    # 밀 관심국가: 미국, 호주, 캐나다, 러시아
-    render_basis_table([
-        ("미국 (USA)", "US SRW (Gulf)", 35.0),
-        ("호주 (Australia)", "ASW (Western Australia)", 22.5),
-        ("캐나다 (Canada)", "CWRS (Vancouver)", 42.0),
-        ("러시아 (Russia)", "Black Sea (Novorossiysk)", 18.0)
-    ])
-
-with basis_tab2:
-    # 옥수수 관심국가: 미국, 브라질, 아르헨티나, 우크라이나
-    render_basis_table([
-        ("미국 (USA)", "US Yellow Corn (Gulf)", 28.0),
-        ("브라질 (Brazil)", "Paranagua", 22.0),
-        ("아르헨티나 (Argentina)", "Up River", 15.0),
-        ("우크라이나 (Ukraine)", "Black Sea (Deep Water)", 12.5)
-    ])
-
-with basis_tab3:
-    # 콩 관심국가: 미국, 브라질, 아르헨티나
-    render_basis_table([
-        ("미국 (USA)", "US Soybeans (Gulf)", 55.0),
-        ("브라질 (Brazil)", "Paranagua", 45.0),
-        ("아르헨티나 (Argentina)", "Up River", 30.0)
-    ])
+cftc_table_html += "</tbody></table>"
+st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
 # 5. 실시간 원문 헤드라인 및 링크 파싱 엔진 (분야별 정확히 2개)
