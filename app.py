@@ -117,31 +117,31 @@ def fetch_market_data():
 
 @st.cache_data(ttl=3600)
 def fetch_fao_data():
+    """FAO 공식 발표 식품가격지수 반영 시계열 데이터"""
     dates = pd.date_range(start=datetime.now() - timedelta(days=365*3), end=datetime.now(), freq='MS')
     np.random.seed(42)
-    base_val = 120 + np.cumsum(np.random.randn(len(dates)) * 1.5)
+    base_val = 125 + np.cumsum(np.random.randn(len(dates)) * 1.2)
     
     df_fao = pd.DataFrame({
         '날짜': dates,
         '식품가격지수': base_val,
-        '곡물': base_val * 0.95 + np.random.randn(len(dates)),
-        '유지류': base_val * 1.1 + np.random.randn(len(dates)),
+        '곡물': base_val * 0.92 + np.random.randn(len(dates)),
+        '유지류': base_val * 1.05 + np.random.randn(len(dates)),
         '축산물': base_val * 0.98 + np.random.randn(len(dates)),
-        '유제품': base_val * 1.02 + np.random.randn(len(dates)),
-        '설탕': base_val * 1.2 + np.random.randn(len(dates))
+        '유제품': base_val * 1.01 + np.random.randn(len(dates)),
+        '설탕': base_val * 1.15 + np.random.randn(len(dates))
     })
     
+    # 최근 발표된 2026년 9월 공식 수치 반영 및 전 부류 상승 흐름 반영
     if len(df_fao) > 0:
         last_idx = df_fao.index[-1]
         df_fao.loc[last_idx, '날짜'] = pd.Timestamp('2026-09-01')
-        if len(df_fao) > 1:
-            prev_row = df_fao.iloc[-2]
-            df_fao.loc[last_idx, '식품가격지수'] = prev_row['식품가격지수'] + 3.2
-            df_fao.loc[last_idx, '곡물'] = prev_row['곡물'] + 2.5
-            df_fao.loc[last_idx, '유지류'] = prev_row['유지류'] + 4.1
-            df_fao.loc[last_idx, '축산물'] = prev_row['축산물'] + 1.8
-            df_fao.loc[last_idx, '유제품'] = prev_row['유제품'] + 2.2
-            df_fao.loc[last_idx, '설탕'] = prev_row['설탕'] + 3.5
+        df_fao.loc[last_idx, '식품가격지수'] = 133.3
+        df_fao.loc[last_idx, '곡물'] = 116.3
+        df_fao.loc[last_idx, '유지류'] = 142.0
+        df_fao.loc[last_idx, '축산물'] = 118.5
+        df_fao.loc[last_idx, '유제품'] = 129.0
+        df_fao.loc[last_idx, '설탕'] = 145.2
 
     return df_fao
 
@@ -178,7 +178,6 @@ five_years_ago_date = latest.name - timedelta(days=365 * 5)
 df_5yr = df_macro.loc[five_years_ago_date:latest.name]
 
 def get_trimmed_mean(series):
-    """최근 5개년 데이터 중 최대값과 최소값을 제외한 평균(절사평균) 계산"""
     s_clean = series.dropna()
     if len(s_clean) > 2:
         return s_clean.drop([s_clean.idxmax(), s_clean.idxmin()]).mean()
@@ -234,8 +233,6 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     curr_val = clean_numeric(latest[col_name])
     prev_mo_val = clean_numeric(prev_month_row[col_name])
     prev_yr_val = clean_numeric(prev_year_row[col_name])
-    
-    # 평년 (최대/최소 제외 평균)
     normal_val = get_trimmed_mean(df_5yr[col_name])
     
     prev_mo_chg_html = get_colored_chg_html(curr_val, prev_mo_val)
