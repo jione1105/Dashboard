@@ -270,21 +270,14 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 선물시장 진단 (대시보드 기준일 기반 동적 산출 연동)
+# 4. 선물시장 진단 (안정적인 st.dataframe 방식 적용)
 # ==========================================
 st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
 @st.cache_data(ttl=3600)
-def compute_dynamic_cftc_metrics(target_date):
-    """
-    대시보드 기준일(target_date) 시점에 맞춰 CFTC 주간 보고서의 월별 누적 평균 및 
-    첨부 리포트 모수(5개년 베이스라인)를 기반으로 지수를 실시간 계산하는 동적 함수[cite: 2]
-    """
-    # 기준일의 월(Month) 정보 추출 (예: 9월인 경우 월초~기준일까지의 최신 보고서 주차 반영)
+def get_dynamic_cftc_dataframe(target_date):
     m = target_date.month
     d = target_date.day
-    
-    # 월별 진단 계수 동적 시뮬레이션 산식 (기준일이 지날수록 리포트 데이터 누적 반영)
     factor = 1.0 + (d / 100.0) if m == 9 else 1.0
     
     data = [
@@ -321,38 +314,23 @@ def compute_dynamic_cftc_metrics(target_date):
             "투기자금 유입 흐름 강도": f"{+2.36 * factor:+.2f}"
         }
     ]
-    return data
+    return pd.DataFrame(data)
 
-cftc_metrics = compute_dynamic_cftc_metrics(latest_macro_date)
+df_cftc_display = get_dynamic_cftc_dataframe(latest_macro_date)
 
-cftc_table_html = """
-<table class="dashboard-table" style="margin-bottom: 20px;">
-    <thead>
-        <tr>
-            <th style="width:16%; text-align:center !important;">품목</th>
-            <th style="width:17%; text-align:right !important; padding-right:15px;">투기 순포지션 점유율</th>
-            <th style="width:17%; text-align:right !important; padding-right:15px;">포지션 백분위(5개년)</th>
-            <th style="width:17%; text-align:right !important; padding-right:15px;">포지션 한계 도달(5개년)</th>
-            <th style="width:17%; text-align:center !important;">시장 상태 판정</th>
-            <th style="width:16%; text-align:right !important; padding-right:15px;">투기자금 유입 흐름 강도</th>
-        </tr>
-    </thead>
-    <tbody>
-"""
-for item in cftc_metrics:
-    status_color = "#dc2626" if item["시장 상태 판정"] == "과열" else "#1e3a8a"
-    cftc_table_html += f"""
-        <tr>
-            <td style="text-align:center !important; font-weight:bold;">{item['품목']}</td>
-            <td style="text-align:right !important; padding-right:15px;"><b>{item['투기 순포지션 점유율']}</b></td>
-            <td style="text-align:right !important; padding-right:15px;">{item['포지션 백분위(5개년)']}</td>
-            <td style="text-align:right !important; padding-right:15px;">{item['포지션 한계 도달(5개년)']}</td>
-            <td style="text-align:center !important;"><span style="color:{status_color}; font-weight:bold;">{item['시장 상태 판정']}</span></td>
-            <td style="text-align:right !important; padding-right:15px;">{item['투기자금 유입 흐름 강도']}</td>
-        </tr>
-    """
-cftc_table_html += "</tbody></table>"
-st.markdown(cftc_table_html, unsafe_allow_html=True)
+st.dataframe(
+    df_cftc_display,
+    use_container_width=True,
+    hide_index=True,
+    column_config={
+        "품목": st.column_config.TextColumn("품목", width="medium"),
+        "투기 순포지션 점유율": st.column_config.TextColumn("투기 순포지션 점유율", width="small"),
+        "포지션 백분위(5개년)": st.column_config.TextColumn("포지션 백분위(5개년)", width="small"),
+        "포지션 한계 도달(5개년)": st.column_config.TextColumn("포지션 한계 도달(5개년)", width="small"),
+        "시장 상태 판정": st.column_config.TextColumn("시장 상태 판정", width="small"),
+        "투기자금 유입 흐름 강도": st.column_config.TextColumn("투기자금 유입 흐름 강도", width="small"),
+    }
+)
 
 # ==========================================
 # 5. 실시간 원문 헤드라인 및 구글 뉴스 검색 링크 엔진
