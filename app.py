@@ -270,98 +270,93 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 선물시장 진단 (첨부 워드 리포트 데이터 기반 자동 연동)
+# 4. 선물시장 진단 (정렬 수정된 HTML 표 구조 적용)
 # ==========================================
 st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
-@st.cache_data(ttl=3600)
-def fetch_cftc_diagnostic_data():
-    # 첨부된 '선물시장 정서 리포트_202608.docx' 문서의 정량 지표 데이터 기반 구성
-    data = [
-        {
-            "품목": "밀 (SRW)",
-            "투기 순포지션 점유율": "-4.18%",
-            "포지션 백분위(5개년)": "60.0%",
-            "포지션 한계 도달(5개년)": "57.5%",
-            "시장 상태 판정": "중립",
-            "투기자금 유입 흐름 강도": "+0.09"
-        },
-        {
-            "품목": "밀 (HRW)",
-            "투기 순포지션 점유율": "+5.17%",
-            "포지션 백분위(5개년)": "61.7%",
-            "포지션 한계 도달(5개년)": "54.9%",
-            "시장 상태 판정": "중립",
-            "투기자금 유입 흐름 강도": "+3.07"
-        },
-        {
-            "품목": "옥수수 (Corn)",
-            "투기 순포지션 점유율": "+15.50%",
-            "포지션 백분위(5개년)": "53.3%",
-            "포지션 한계 도달(5개년)": "64.1%",
-            "시장 상태 판정": "중립",
-            "투기자금 유입 흐름 강도": "+5.74"
-        },
-        {
-            "품목": "콩 (Soybean)",
-            "투기 순포지션 점유율": "+17.77%",
-            "포지션 백분위(5개년)": "66.7%",
-            "포지션 한계 도달(5개년)": "78.1%",
-            "시장 상태 판정": "과열",
-            "투기자금 유입 흐름 강도": "+2.36"
-        }
-    ]
-    return pd.DataFrame(data)
-
-df_cftc = fetch_cftc_diagnostic_data()
-
-st.dataframe(
-    df_cftc,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "품목": st.column_config.TextColumn("품목", width="medium"),
-        "투기 순포지션 점유율": st.column_config.TextColumn("투기 순포지션 점유율", width="medium"),
-        "포지션 백분위(5개년)": st.column_config.TextColumn("포지션 백분위(5개년)", width="medium"),
-        "포지션 한계 도달(5개년)": st.column_config.TextColumn("포지션 한계 도달(5개년)", width="medium"),
-        "시장 상태 판정": st.column_config.TextColumn("시장 상태 판정", width="medium"),
-        "투기자금 유입 흐름 강도": st.column_config.TextColumn("투기자금 유입 흐름 강도", width="medium"),
-    }
-)
+cftc_table_html = """
+<table class="dashboard-table" style="margin-bottom: 20px;">
+    <thead>
+        <tr>
+            <th style="width:16%; text-align:center !important;">품목</th>
+            <th style="width:17%; text-align:right !important; padding-right:15px;">투기 순포지션 점유율</th>
+            <th style="width:17%; text-align:right !important; padding-right:15px;">포지션 백분위(5개년)</th>
+            <th style="width:17%; text-align:right !important; padding-right:15px;">포지션 한계 도달(5개년)</th>
+            <th style="width:17%; text-align:center !important;">시장 상태 판정</th>
+            <th style="width:16%; text-align:right !important; padding-right:15px;">투기자금 유입 흐름 강도</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">밀 (SRW)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>-4.18%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">60.0%</td>
+            <td style="text-align:right !important; padding-right:15px;">57.5%</td>
+            <td style="text-align:center !important;"><span style="color:#1e3a8a; font-weight:bold;">중립</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+0.09</td>
+        </tr>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">밀 (HRW)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>+5.17%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">61.7%</td>
+            <td style="text-align:right !important; padding-right:15px;">54.9%</td>
+            <td style="text-align:center !important;"><span style="color:#1e3a8a; font-weight:bold;">중립</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+3.07</td>
+        </tr>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">옥수수 (Corn)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>+15.50%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">53.3%</td>
+            <td style="text-align:right !important; padding-right:15px;">64.1%</td>
+            <td style="text-align:center !important;"><span style="color:#1e3a8a; font-weight:bold;">중립</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+5.74</td>
+        </tr>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">콩 (Soybean)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>+17.77%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">66.7%</td>
+            <td style="text-align:right !important; padding-right:15px;">78.1%</td>
+            <td style="text-align:center !important;"><span style="color:#dc2626; font-weight:bold;">과열</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+2.36</td>
+        </tr>
+    </tbody>
+</table>
+"""
+st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 실시간 원문 헤드라인 및 링크 파싱 엔진 (분야별 정확히 2개)
+# 5. 실시간 원문 헤드라인 및 구글 뉴스 검색 링크 엔진 (링크 오류 수정)
 # ==========================================
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
     categories = [
-        {"tag": "국제곡물", "q": "(wheat OR corn OR soybean) (reuters OR bloomberg)"},
-        {"tag": "원자재", "q": "('crude oil' OR urea OR fertilizer) (reuters OR bloomberg)"},
-        {"tag": "거시지표", "q": "('dollar index' OR interest rate OR inflation) (reuters OR bloomberg)"},
-        {"tag": "해상물류", "q": "(freight OR shipping OR port OR bdi) (reuters OR bloomberg)"},
-        {"tag": "관련 정책", "q": "(grain export policy OR tariff OR restriction) (reuters OR bloomberg)"}
+        {"tag": "국제곡물", "q": "(wheat OR corn OR soybean)"},
+        {"tag": "원자재", "q": "('crude oil' OR urea OR fertilizer)"},
+        {"tag": "거시지표", "q": "('dollar index' OR interest rate OR inflation)"},
+        {"tag": "해상물류", "q": "(freight OR shipping OR port OR bdi)"},
+        {"tag": "관련 정책", "q": "(grain export policy OR tariff OR restriction)"}
     ]
     
     fallbacks = {
         "국제곡물": [
-            {"title": "Black Sea grain export volume updates and global wheat supply monitoring", "link": "https://www.reuters.com"},
-            {"title": "South American soybean harvesting progress and export flow analysis", "link": "https://www.bloomberg.com"}
+            {"title": "Black Sea grain export volume updates and global wheat supply monitoring"},
+            {"title": "South American soybean harvesting progress and export flow analysis"}
         ],
         "원자재": [
-            {"title": "Crude oil prices steady amid shifting Middle East supply risk assessments", "link": "https://www.reuters.com"},
-            {"title": "Global fertilizer and urea market price volatility review", "link": "https://www.bloomberg.com"}
+            {"title": "Crude oil prices steady amid shifting Middle East supply risk assessments"},
+            {"title": "Global fertilizer and urea market price volatility review"}
         ],
         "거시지표": [
-            {"title": "Federal Reserve interest rate outlook and dollar index fluctuation analysis", "link": "https://www.reuters.com"},
-            {"title": "Global inflation trends and currency market impacts", "link": "https://www.bloomberg.com"}
+            {"title": "Federal Reserve interest rate outlook and dollar index fluctuation analysis"},
+            {"title": "Global inflation trends and currency market impacts"}
         ],
         "해상물류": [
-            {"title": "Dry bulk shipping index and panama canal transit update", "link": "https://www.bloomberg.com"},
-            {"title": "Global container freight rate trends and port congestion status", "link": "https://www.reuters.com"}
+            {"title": "Dry bulk shipping index and panama canal transit update"},
+            {"title": "Global container freight rate trends and port congestion status"}
         ],
         "관련 정책": [
-            {"title": "New agricultural export tariff adjustments and food security measures", "link": "https://www.reuters.com"},
-            {"title": "Major producer trade policy shifts impacting global grain flows", "link": "https://www.bloomberg.com"}
+            {"title": "New agricultural export tariff adjustments and food security measures"},
+            {"title": "Major producer trade policy shifts impacting global grain flows"}
         ]
     }
     
@@ -377,16 +372,21 @@ def fetch_translated_specialized_news():
             
             for article in articles:
                 raw_title = article.title.text.split(" - ")[0]
-                link = article.link.text if article.link else "https://news.google.com"
                 if len(raw_title) > 15:
-                    parsed_items.append({"title": raw_title, "link": link})
+                    # 원문 링크 접근 오류 방지를 위해 구글 뉴스 검색 결과 직접 연결 링크 생성
+                    search_link = f"https://www.google.com/search?q={quote(raw_title)}"
+                    parsed_items.append({"title": raw_title, "link": search_link})
                     if len(parsed_items) >= 2:
                         break
         except:
             pass
             
         if not parsed_items:
-            parsed_items = fallbacks[tag_name]
+            fallback_items = []
+            for fb in fallbacks[tag_name]:
+                fb_title = fb["title"]
+                fallback_items.append({"title": fb_title, "link": f"https://www.google.com/search?q={quote(fb_title)}"})
+            parsed_items = fallback_items
             
         news_output_list.append({"tag": tag_name, "items": parsed_items[:2]})
     return news_output_list
@@ -463,7 +463,7 @@ with col_line1_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 7. 하단 영역 (FAO 지수 및 분야별 2개 뉴스 + 바로가기 링크)
+# 7. 하단 영역 (FAO 지수 및 분야별 2개 뉴스 + 정상 작동 링크)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 col_line2_left, col_line2_right = st.columns([3, 2])
