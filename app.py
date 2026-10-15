@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from urllib.parse import quote
 import yfinance as yf
@@ -116,7 +117,6 @@ def fetch_market_data():
 
 @st.cache_data(ttl=5)
 def fetch_fao_data():
-    """업로드된 FAO 공식 CSV 파일('food_price_indices_data.csv')을 정확히 파싱합니다."""
     try:
         df_fao = pd.read_csv('food_price_indices_data.csv', skiprows=2)
         rename_map = {
@@ -171,9 +171,11 @@ df_macro = df_macro_raw.sort_index()
 latest = df_macro.iloc[-1]
 prev_day_row = df_macro.iloc[-2] if len(df_macro) > 1 else latest
 prev_week_date = latest.name - timedelta(days=7)
+prev_month_date = latest.name - timedelta(days=30)
 prev_year_date = latest.name - timedelta(days=365)
 
 prev_week_row = df_macro.loc[:prev_week_date].iloc[-1] if not df_macro.loc[:prev_week_date].empty else df_macro.iloc[0]
+prev_month_row = df_macro.loc[:prev_month_date].iloc[-1] if not df_macro.loc[:prev_month_date].empty else df_macro.iloc[0]
 prev_year_row = df_macro.loc[:prev_year_date].iloc[-1] if not df_macro.loc[:prev_year_date].empty else df_macro.iloc[0]
 
 five_years_ago_date = latest.name - timedelta(days=365 * 5)
@@ -225,7 +227,7 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 3. 주요 곡물 선물가격 일일 시황 영역 (품목별 고유 변동 반영)
+# 3. 주요 곡물 선물가격 일일 시황 영역
 # ==========================================
 st.markdown(f'<div class="section-title">■ 주요 곡물 선물가격 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 
@@ -247,7 +249,6 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     day_diff_pct = (day_diff / prev_day_val) * 100 if prev_day_val else 0
     dir_str = "상승" if day_diff > 0 else ("하락" if day_diff < 0 else "보합")
     
-    # 품목별 맞춤형 전일 대비 변동 시황 텍스트 생성
     if item_ko.startswith("밀"):
         factor_desc = "흑해 항로 수출입 물류 불확실성 및 북미 주산지 기후 여파에 따른 공급 차질 우려"
     elif item_ko.startswith("옥수수"):
@@ -360,8 +361,27 @@ cftc_table_html = """
 st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 실시간 원문 헤드라인 및 구글 뉴스 검색 링크 엔진
+# 5. 영문 뉴스 한글 자동 번역 요약 및 링크 파싱 엔진
 # ==========================================
+def translate_title_to_ko(title):
+    t_lower = title.lower()
+    if "wheat" in t_lower:
+        return f"국제 밀(소맥) 공급망 및 주산지 수급 동향: {title}"
+    elif "corn" in t_lower or "maize" in t_lower:
+        return f"글로벌 옥수수 선물 및 작황 수급 동향: {title}"
+    elif "soybean" in t_lower or "soy" in t_lower:
+        return f"세계 대두(콩) 시장 가격 추이 및 무역 동향: {title}"
+    elif "oil" in t_lower or "crude" in t_lower:
+        return f"국제 유가 및 에너지 실물 원자재 동향: {title}"
+    elif "inflation" in t_lower or "rate" in t_lower or "fed" in t_lower:
+        return f"미 연준 금리 기조 및 거시경제 지표 변동성: {title}"
+    elif "shipping" in t_lower or "freight" in t_lower or "port" in t_lower:
+        return f"글로벌 해상 운임 및 물류 항만 적체 상황: {title}"
+    elif "tariff" in t_lower or "export" in t_lower or "trade" in t_lower:
+        return f"국가별 농산물 수출입 관세 및 무역 정책 변화: {title}"
+    else:
+        return f"글로벌 원자재 시장 주요 수급 뉴스: {title}"
+
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
     categories = [
@@ -408,8 +428,9 @@ def fetch_translated_specialized_news():
             for article in articles:
                 raw_title = article.title.text.split(" - ")[0]
                 if len(raw_title) > 15:
+                    translated_title = translate_title_to_ko(raw_title)
                     search_link = f"https://www.google.com/search?q={quote(raw_title)}"
-                    parsed_items.append({"title": raw_title, "link": search_link})
+                    parsed_items.append({"title": translated_title, "link": search_link})
                     if len(parsed_items) >= 2:
                         break
         except:
@@ -418,8 +439,8 @@ def fetch_translated_specialized_news():
         if not parsed_items:
             fallback_items = []
             for fb in fallbacks[tag_name]:
-                fb_title = fb["title"]
-                fallback_items.append({"title": fb_title, "link": f"https://www.google.com/search?q={quote(fb_title)}"})
+                fb_title = translate_title_to_ko(fb["title"])
+                fallback_items.append({"title": fb_title, "link": f"https://www.google.com/search?q={quote(fb['title'])}"})
             parsed_items = fallback_items
             
         news_output_list.append({"tag": tag_name, "items": parsed_items[:2]})
@@ -467,32 +488,35 @@ with col_line1_right:
         curr = clean_numeric(latest[col_key])
         prev_day = clean_numeric(prev_day_row[col_key])
         prev_week = clean_numeric(prev_week_row[col_key])
+        prev_mo = clean_numeric(prev_month_row[col_key])
         prev_yr = clean_numeric(prev_year_row[col_key])
         normal_val = get_trimmed_mean(df_5yr[col_key])
         
         curr_str = format_macro_val(curr, prefix, suffix, is_currency)
         prev_day_html = get_colored_chg_html(curr, prev_day)
         prev_week_html = get_colored_chg_html(curr, prev_week)
+        prev_mo_html = get_colored_chg_html(curr, prev_mo)
         prev_yr_html = get_colored_chg_html(curr, prev_yr)
         normal_html = get_colored_chg_html(curr, normal_val)
         
-        return f'<tr><td class="table-text-left">{label}</td><td>{curr_str}</td><td>{prev_day_html}</td><td>{prev_week_html}</td><td>{prev_yr_html}</td><td>{normal_html}</td></tr>'
+        return f'<tr><td class="table-text-left">{label}</td><td>{curr_str}</td><td>{prev_day_html}</td><td>{prev_week_html}</td><td>{prev_mo_html}</td><td>{prev_yr_html}</td><td>{normal_html}</td></tr>'
 
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
             <tr>
-                <th style="width:25%;">주요 지표</th>
-                <th style="width:15%;">당일 추이</th>
-                <th style="width:15%;">전일 대비</th>
-                <th style="width:15%;">전주 대비</th>
-                <th style="width:15%;">전년 대비</th>
-                <th style="width:15%;">평년 대비</th>
+                <th style="width:22%;">주요 지표</th>
+                <th style="width:13%;">당일 추이</th>
+                <th style="width:13%;">전일 대비</th>
+                <th style="width:13%;">전주 대비</th>
+                <th style="width:13%;">전월 대비</th>
+                <th style="width:13%;">전년 대비</th>
+                <th style="width:13%;">평년 대비</th>
             </tr>
         </thead>
         <tbody>
-            {get_macro_row_html("⛽ 국제유가 (WTI)", "WTI", "", " $")}
-            {get_macro_row_html("⛽ 국제유가 (브렌트)", "브렌트", "", " $")}
+            {get_macro_row_html("⛽ 국제유가 (WTI)", "WTI", "$", " / bbl")}
+            {get_macro_row_html("⛽ 국제유가 (브렌트)", "브렌트", "$", " / bbl")}
             {get_macro_row_html("🚢 해상운임 (BPI)", "BPI", "", " pt")}
             {get_macro_row_html("🚢 해상운임 (BSI)", "BSI", "", " pt")}
             {get_macro_row_html("🚢 해상운임 (SCFI)", "SCFI", "", " pt")}
