@@ -237,11 +237,13 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     curr_val = clean_numeric(latest[col_name])
     prev_day_val = clean_numeric(prev_day_row[col_name])
     prev_week_val = clean_numeric(prev_week_row[col_name])
+    prev_mo_val = clean_numeric(prev_month_row[col_name])
     prev_yr_val = clean_numeric(prev_year_row[col_name])
     normal_val = get_trimmed_mean(df_5yr[col_name])
     
     prev_day_chg_html = get_colored_chg_html(curr_val, prev_day_val)
     prev_week_chg_html = get_colored_chg_html(curr_val, prev_week_val)
+    prev_mo_chg_html = get_colored_chg_html(curr_val, prev_mo_val)
     prev_yr_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
     normal_chg_html = get_colored_chg_html(curr_val, normal_val)
     
@@ -265,28 +267,33 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     <div class="reason-section-box" style="border-top: 4px solid {border_color};">
         <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 14px; text-align: center; background-color: #f8fafc; padding: 10px; border-radius: 4px;">
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">당일 선물가격</div>
-                <div style="font-size: 14px; font-weight: bold; color: #0f172a;">${curr_val:.2f} <span style="font-size:9px; font-weight:normal;">달러/톤</span></div>
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">당일 가격</div>
+                <div style="font-size: 12px; font-weight: bold; color: #0f172a;">${curr_val:.2f}</div>
             </div>
-            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
+            <div style="border-left: 1px solid #cbd5e1; height: 22px;"></div>
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전일 대비</div>
-                <div style="font-size: 13px; font-weight: bold;">{prev_day_chg_html}</div>
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">전일 대비</div>
+                <div style="font-size: 11px; font-weight: bold;">{prev_day_chg_html}</div>
             </div>
-            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
+            <div style="border-left: 1px solid #cbd5e1; height: 22px;"></div>
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전주 대비</div>
-                <div style="font-size: 13px; font-weight: bold;">{prev_week_chg_html}</div>
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">전주 대비</div>
+                <div style="font-size: 11px; font-weight: bold;">{prev_week_chg_html}</div>
             </div>
-            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
+            <div style="border-left: 1px solid #cbd5e1; height: 22px;"></div>
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전년 동기 대비</div>
-                <div style="font-size: 13px; font-weight: bold;">{prev_yr_chg_html}</div>
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">전월 대비</div>
+                <div style="font-size: 11px; font-weight: bold;">{prev_mo_chg_html}</div>
             </div>
-            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
+            <div style="border-left: 1px solid #cbd5e1; height: 22px;"></div>
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">평년 대비</div>
-                <div style="font-size: 13px; font-weight: bold;">{normal_chg_html}</div>
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">전년 대비</div>
+                <div style="font-size: 11px; font-weight: bold;">{prev_yr_chg_html}</div>
+            </div>
+            <div style="border-left: 1px solid #cbd5e1; height: 22px;"></div>
+            <div>
+                <div style="font-size: 10px; color: #64748b; font-weight: bold;">평년 대비</div>
+                <div style="font-size: 11px; font-weight: bold;">{normal_chg_html}</div>
             </div>
         </div>
         <div class="reason-card" style="border-left-color: {border_color}; margin-bottom: 0;">
@@ -361,26 +368,26 @@ cftc_table_html = """
 st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 영문 뉴스 한글 자동 번역 요약 및 링크 파싱 엔진
+# 5. 영문 뉴스 한글 자동 번역 요약 엔진
 # ==========================================
 def translate_title_to_ko(title):
-    t_lower = title.lower()
-    if "wheat" in t_lower:
+    t = title.lower()
+    if "wheat" in t:
         return f"국제 밀(소맥) 공급망 및 주산지 수급 동향: {title}"
-    elif "corn" in t_lower or "maize" in t_lower:
+    elif "corn" in t or "maize" in t:
         return f"글로벌 옥수수 선물 및 작황 수급 동향: {title}"
-    elif "soybean" in t_lower or "soy" in t_lower:
+    elif "soybean" in t or "soy" in t:
         return f"세계 대두(콩) 시장 가격 추이 및 무역 동향: {title}"
-    elif "oil" in t_lower or "crude" in t_lower:
+    elif "oil" in t or "crude" in t:
         return f"국제 유가 및 에너지 실물 원자재 동향: {title}"
-    elif "inflation" in t_lower or "rate" in t_lower or "fed" in t_lower:
+    elif "inflation" in t or "rate" in t or "fed" in t:
         return f"미 연준 금리 기조 및 거시경제 지표 변동성: {title}"
-    elif "shipping" in t_lower or "freight" in t_lower or "port" in t_lower:
+    elif "shipping" in t or "freight" in t or "port" in t:
         return f"글로벌 해상 운임 및 물류 항만 적체 상황: {title}"
-    elif "tariff" in t_lower or "export" in t_lower or "trade" in t_lower:
+    elif "tariff" in t or "export" in t or "trade" in t:
         return f"국가별 농산물 수출입 관세 및 무역 정책 변화: {title}"
     else:
-        return f"글로벌 원자재 시장 주요 수급 뉴스: {title}"
+        return f"글로벌 원자재 시장 주요 수급 소식: {title}"
 
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
@@ -515,8 +522,8 @@ with col_line1_right:
             </tr>
         </thead>
         <tbody>
-            {get_macro_row_html("⛽ 국제유가 (WTI)", "WTI", "$", " / bbl")}
-            {get_macro_row_html("⛽ 국제유가 (브렌트)", "브렌트", "$", " / bbl")}
+            {get_macro_row_html("⛽ 국제유가 (WTI)", "WTI", "$", "")}
+            {get_macro_row_html("⛽ 국제유가 (브렌트)", "브렌트", "$", "")}
             {get_macro_row_html("🚢 해상운임 (BPI)", "BPI", "", " pt")}
             {get_macro_row_html("🚢 해상운임 (BSI)", "BSI", "", " pt")}
             {get_macro_row_html("🚢 해상운임 (SCFI)", "SCFI", "", " pt")}
@@ -527,7 +534,7 @@ with col_line1_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 7. 하단 영역 (FAO 지수 및 분야별 2개 뉴스 + 정상 작동 링크)
+# 7. 하단 영역 (FAO 지수 및 분야별 2개 뉴스 + 한글 번역 반영)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 col_line2_left, col_line2_right = st.columns([3, 2])
@@ -571,7 +578,7 @@ with col_line2_left:
             
             fig_fao.update_layout(margin=dict(l=10, r=10, t=15, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
             st.plotly_chart(fig_fao, use_container_width=True)
-        except Exception as fao_err:
+        exceptException as fao_err:
             st.error(f"FAO 지수 필터 가공 에러: {fao_err}")
 
 with col_line2_right:
