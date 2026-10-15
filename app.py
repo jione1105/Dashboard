@@ -491,8 +491,8 @@ with col_line1_right:
             </tr>
         </thead>
         <tbody>
-            {get_macro_row_html("⛽ 국제유가 (WTI)", "WTI", "$", " / bbl")}
-            {get_macro_row_html("⛽ 국제유가 (브렌트)", "브렌트", "$", " / bbl")}
+            {get_macro_row_html("⛽ 국제유가 (WTI)", "WTI", "", " $")}
+            {get_macro_row_html("⛽ 국제유가 (브렌트)", "브렌트", "", " $")}
             {get_macro_row_html("🚢 해상운임 (BPI)", "BPI", "", " pt")}
             {get_macro_row_html("🚢 해상운임 (BSI)", "BSI", "", " pt")}
             {get_macro_row_html("🚢 해상운임 (SCFI)", "SCFI", "", " pt")}
