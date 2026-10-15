@@ -360,38 +360,8 @@ cftc_table_html = """
 st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 핵심 단어 매핑 방식의 완벽한 한글 뉴스 번역 엔진
+# 5. 실시간 영문 뉴스 헤드라인 원문 노출 엔진
 # ==========================================
-def translate_title_to_ko(title):
-    """영문 뉴스 헤드라인을 자연스러운 한글 경제/농산물 용어로 치환"""
-    t = title
-    translations = {
-        "Wheat": "밀", "wheat": "밀",
-        "Corn": "옥수수", "corn": "옥수수", "Maize": "옥수수", "maize": "옥수수",
-        "Soybean": "대두", "soybean": "대두", "Soybeans": "대두", "soy": "대두",
-        "Grain": "곡물", "grain": "곡물", "Grains": "곡물", "grains": "곡물",
-        "Prices": "가격", "prices": "가격", "Price": "가격", "price": "가격",
-        "Market": "시장", "market": "시장", "Markets": "시장", "markets": "시장",
-        "Supply": "공급", "supply": "공급", "Demand": "수요", "demand": "수요",
-        "Harvest": "수확", "harvest": "수확", "Crop": "작황", "crop": "작황", "Crops": "작황",
-        "Export": "수출", "export": "수출", "Exports": "수출", "Import": "수입", "import": "수입",
-        "Shipping": "해운", "shipping": "해운", "Freight": "운임", "freight": "운임",
-        "Crude oil": "원유", "oil": "유가", "Energy": "에너지", "energy": "에너지",
-        "Inflation": "인플레이션", "inflation": "인플레이션", "Interest rate": "금리",
-        "Federal Reserve": "미 연준", "Fed": "연준", "Dollar": "달러",
-        "Black Sea": "흑해", "Russia": "러시아", "Ukraine": "우크라이나",
-        "South America": "남미", "Brazil": "브라질", "Argentina": "아르헨티나",
-        "Update": "동향", "Updates": "동향", "Analysis": "분석", "Review": "검토",
-        "Surge": "급등", "Jump": "상승", "Drop": "하락", "Slump": "침체", "Steady": "보합",
-        "High School Girls Volleyball": "고등학교 여자 배구 경기",
-        "vs.": "대"
-    }
-    
-    for en, ko in translations.items():
-        t = t.replace(en, ko)
-        
-    return t
-
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
     categories = [
@@ -404,24 +374,24 @@ def fetch_translated_specialized_news():
     
     fallbacks = {
         "국제곡물": [
-            {"title": "흑해 곡물 수출 물량 업데이트 및 글로벌 밀 공급 모니터링"},
-            {"title": "남미 대두 수확 진척도 및 수출 흐름 분석"}
+            {"title": "Black Sea grain export volume updates and global wheat supply monitoring"},
+            {"title": "South American soybean harvesting progress and export flow analysis"}
         ],
         "원자재": [
-            {"title": "중동 공급 리스크 변화 속 국제 원유 및 에너지 가격 안정세"},
-            {"title": "글로벌 비료 및 요소수 시장 가격 변동성 검토"}
+            {"title": "Crude oil prices steady amid shifting Middle East supply risk assessments"},
+            {"title": "Global fertilizer and urea market price volatility review"}
         ],
         "거시지표": [
-            {"title": "미 연준 금리 전망 및 달러인덱스 변동성 분석"},
-            {"title": "글로벌 인플레이션 추세 및 환율 시장 영향"}
+            {"title": "Federal Reserve interest rate outlook and dollar index fluctuation analysis"},
+            {"title": "Global inflation trends and currency market impacts"}
         ],
         "해상물류": [
-            {"title": "벌크선 해상운임 지수 및 파나마 운하 통항 현황 업데이트"},
-            {"title": "글로벌 컨테이너 운임 추이 및 항만 적체 상황 점검"}
+            {"title": "Dry bulk shipping index and panama canal transit update"},
+            {"title": "Global container freight rate trends and port congestion status"}
         ],
         "관련 정책": [
-            {"title": "신규 농산물 수출 관세 조정 및 식량 안보 대책 발표"},
-            {"title": "주요 생산국의 국제 곡물 흐름에 영향을 미치는 무역 정책 변화"}
+            {"title": "New agricultural export tariff adjustments and food security measures"},
+            {"title": "Major producer trade policy shifts impacting global grain flows"}
         ]
     }
     
@@ -438,9 +408,8 @@ def fetch_translated_specialized_news():
             for article in articles:
                 raw_title = article.title.text.split(" - ")[0]
                 if len(raw_title) > 10:
-                    translated_title = translate_title_to_ko(raw_title)
                     search_link = f"https://www.google.com/search?q={quote(raw_title)}"
-                    parsed_items.append({"title": translated_title, "link": search_link})
+                    parsed_items.append({"title": raw_title, "link": search_link})
                     if len(parsed_items) >= 2:
                         break
         except:
