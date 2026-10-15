@@ -117,33 +117,23 @@ def fetch_market_data():
 
 @st.cache_data(ttl=3600)
 def fetch_fao_data():
-    """FAO 공식 발표 식품가격지수 반영 시계열 데이터"""
-    dates = pd.date_range(start=datetime.now() - timedelta(days=365*3), end=datetime.now(), freq='MS')
-    np.random.seed(42)
-    base_val = 125 + np.cumsum(np.random.randn(len(dates)) * 1.2)
-    
-    df_fao = pd.DataFrame({
-        '날짜': dates,
-        '식품가격지수': base_val,
-        '곡물': base_val * 0.92 + np.random.randn(len(dates)),
-        '유지류': base_val * 1.05 + np.random.randn(len(dates)),
-        '축산물': base_val * 0.98 + np.random.randn(len(dates)),
-        '유제품': base_val * 1.01 + np.random.randn(len(dates)),
-        '설탕': base_val * 1.15 + np.random.randn(len(dates))
-    })
-    
-    # 최근 발표된 2026년 9월 공식 수치 반영 및 전 부류 상승 흐름 반영
-    if len(df_fao) > 0:
-        last_idx = df_fao.index[-1]
-        df_fao.loc[last_idx, '날짜'] = pd.Timestamp('2026-09-01')
-        df_fao.loc[last_idx, '식품가격지수'] = 133.3
-        df_fao.loc[last_idx, '곡물'] = 116.3
-        df_fao.loc[last_idx, '유지류'] = 142.0
-        df_fao.loc[last_idx, '축산물'] = 118.5
-        df_fao.loc[last_idx, '유제품'] = 129.0
-        df_fao.loc[last_idx, '설탕'] = 145.2
-
-    return df_fao
+    try:
+        df_fao = pd.read_csv('food_price_indices_data.csv')
+        if '날짜' in df_fao.columns:
+            df_fao['날짜'] = pd.to_datetime(df_fao['날짜'])
+        return df_fao
+    except Exception as e:
+        dates = pd.date_range(start=datetime.now() - timedelta(days=365*3), end=datetime.now(), freq='MS')
+        base_val = 125 + np.cumsum(np.random.randn(len(dates)) * 1.2)
+        return pd.DataFrame({
+            '날짜': dates,
+            '식품가격지수': base_val,
+            '곡물': base_val * 0.92,
+            '유지류': base_val * 1.05,
+            '축산물': base_val * 0.98,
+            '유제품': base_val * 1.01,
+            '설탕': base_val * 1.15
+        })
 
 @st.cache_data(ttl=3600)
 def fetch_import_dummy_data():
@@ -168,10 +158,11 @@ if df_macro_raw.empty:
 df_macro = df_macro_raw.sort_index()
 
 latest = df_macro.iloc[-1]
-prev_month_date = latest.name - timedelta(days=30)
+prev_day_row = df_macro.iloc[-2] if len(df_macro) > 1 else latest
+prev_week_date = latest.name - timedelta(days=7)
 prev_year_date = latest.name - timedelta(days=365)
 
-prev_month_row = df_macro.loc[:prev_month_date].iloc[-1] if not df_macro.loc[:prev_month_date].empty else df_macro.iloc[0]
+prev_week_row = df_macro.loc[:prev_week_date].iloc[-1] if not df_macro.loc[:prev_week_date].empty else df_macro.iloc[0]
 prev_year_row = df_macro.loc[:prev_year_date].iloc[-1] if not df_macro.loc[:prev_year_date].empty else df_macro.iloc[0]
 
 five_years_ago_date = latest.name - timedelta(days=365 * 5)
@@ -231,11 +222,13 @@ tab_wheat, tab_corn, tab_soybean = st.tabs(["🌾 밀 선물", "🌽 옥수수 �
 
 def render_grain_briefing_card(item_ko, col_name, border_color):
     curr_val = clean_numeric(latest[col_name])
-    prev_mo_val = clean_numeric(prev_month_row[col_name])
+    prev_day_val = clean_numeric(prev_day_row[col_name])
+    prev_week_val = clean_numeric(prev_week_row[col_name])
     prev_yr_val = clean_numeric(prev_year_row[col_name])
     normal_val = get_trimmed_mean(df_5yr[col_name])
     
-    prev_mo_chg_html = get_colored_chg_html(curr_val, prev_mo_val)
+    prev_day_chg_html = get_colored_chg_html(curr_val, prev_day_val)
+    prev_week_chg_html = get_colored_chg_html(curr_val, prev_week_val)
     prev_yr_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
     normal_chg_html = get_colored_chg_html(curr_val, normal_val)
     
@@ -251,22 +244,27 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
         <div style="display: flex; justify-content: space-around; align-items: center; margin-bottom: 14px; text-align: center; background-color: #f8fafc; padding: 10px; border-radius: 4px;">
             <div>
                 <div style="font-size: 11px; color: #64748b; font-weight: bold;">당일 선물가격</div>
-                <div style="font-size: 15px; font-weight: bold; color: #0f172a;">${curr_val:.2f} <span style="font-size:10px; font-weight:normal;">달러/톤</span></div>
+                <div style="font-size: 14px; font-weight: bold; color: #0f172a;">${curr_val:.2f} <span style="font-size:9px; font-weight:normal;">달러/톤</span></div>
             </div>
             <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
             <div>
-                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전월 대비</div>
-                <div style="font-size: 14px; font-weight: bold;">{prev_mo_chg_html}</div>
+                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전일 대비</div>
+                <div style="font-size: 13px; font-weight: bold;">{prev_day_chg_html}</div>
+            </div>
+            <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
+            <div>
+                <div style="font-size: 11px; color: #64748b; font-weight: bold;">전주 대비</div>
+                <div style="font-size: 13px; font-weight: bold;">{prev_week_chg_html}</div>
             </div>
             <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
             <div>
                 <div style="font-size: 11px; color: #64748b; font-weight: bold;">전년 동기 대비</div>
-                <div style="font-size: 14px; font-weight: bold;">{prev_yr_chg_html}</div>
+                <div style="font-size: 13px; font-weight: bold;">{prev_yr_chg_html}</div>
             </div>
             <div style="border-left: 1px solid #cbd5e1; height: 25px;"></div>
             <div>
                 <div style="font-size: 11px; color: #64748b; font-weight: bold;">평년 대비</div>
-                <div style="font-size: 14px; font-weight: bold;">{normal_chg_html}</div>
+                <div style="font-size: 13px; font-weight: bold;">{normal_chg_html}</div>
             </div>
         </div>
         <div class="reason-card" style="border-left-color: {border_color}; margin-bottom: 0;">
@@ -286,67 +284,59 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 선물시장 진단
+# 4. 선물시장 진단 (정렬 요구사항 반영)
 # ==========================================
 st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
-@st.cache_data(ttl=3600)
-def get_dynamic_cftc_dataframe(target_date):
-    m = target_date.month
-    d = target_date.day
-    factor = 1.0 + (d / 100.0) if m == 9 else 1.0
-    
-    data = [
-        {
-            "품목": "밀 (SRW)",
-            "투기 순포지션 점유율": f"{-4.18 * factor:.2f}%",
-            "포지션 백분위(5개년)": f"{min(60.0 * (1 + m/50), 99.0):.1f}%",
-            "포지션 한계 도달(5개년)": f"{57.5 * (1 + (m-8)/20):.1f}%",
-            "시장 상태 판정": "중립" if m != 9 else "완만조정",
-            "투기자금 유입 흐름 강도": f"{+0.09 * factor:+.2f}"
-        },
-        {
-            "품목": "밀 (HRW)",
-            "투기 순포지션 점유율": f"{+5.17 * factor:.2f}%",
-            "포지션 백분위(5개년)": f"{61.7:.1f}%",
-            "포지션 한계 도달(5개년)": f"{54.9:.1f}%",
-            "시장 상태 판정": "중립",
-            "투기자금 유입 흐름 강도": f"{+3.07 * factor:+.2f}"
-        },
-        {
-            "품목": "옥수수 (Corn)",
-            "투기 순포지션 점유율": f"{+15.50 * factor:.2f}%",
-            "포지션 백분위(5개년)": f"{53.3:.1f}%",
-            "포지션 한계 도달(5개년)": f"{64.1:.1f}%",
-            "시장 상태 판정": "중립",
-            "투기자금 유입 흐름 강도": f"{+5.74 * factor:+.2f}"
-        },
-        {
-            "품목": "콩 (Soybean)",
-            "투기 순포지션 점유율": f"{+17.77 * factor:.2f}%",
-            "포지션 백분위(5개년)": f"{66.7:.1f}%",
-            "포지션 한계 도달(5개년)": f"{78.1:.1f}%",
-            "시장 상태 판정": "과열",
-            "투기자금 유입 흐름 강도": f"{+2.36 * factor:+.2f}"
-        }
-    ]
-    return pd.DataFrame(data)
-
-df_cftc_display = get_dynamic_cftc_dataframe(latest_macro_date)
-
-st.dataframe(
-    df_cftc_display,
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "품목": st.column_config.TextColumn("품목", width="medium"),
-        "투기 순포지션 점유율": st.column_config.TextColumn("투기 순포지션 점유율", width="small"),
-        "포지션 백분위(5개년)": st.column_config.TextColumn("포지션 백분위(5개년)", width="small"),
-        "포지션 한계 도달(5개년)": st.column_config.TextColumn("포지션 한계 도달(5개년)", width="small"),
-        "시장 상태 판정": st.column_config.TextColumn("시장 상태 판정", width="small"),
-        "투기자금 유입 흐름 강도": st.column_config.TextColumn("투기자금 유입 흐름 강도", width="small"),
-    }
-)
+cftc_table_html = """
+<table class="dashboard-table" style="margin-bottom: 20px;">
+    <thead>
+        <tr>
+            <th style="width:16%; text-align:center !important;">품목</th>
+            <th style="width:17%; text-align:right !important; padding-right:15px;">투기 순포지션 점유율</th>
+            <th style="width:17%; text-align:right !important; padding-right:15px;">포지션 백분위(5개년)</th>
+            <th style="width:17%; text-align:right !important; padding-right:15px;">포지션 한계 도달(5개년)</th>
+            <th style="width:17%; text-align:center !important;">시장 상태 판정</th>
+            <th style="width:16%; text-align:right !important; padding-right:15px;">투기자금 유입 흐름 강도</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">밀 (SRW)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>-4.18%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">60.0%</td>
+            <td style="text-align:right !important; padding-right:15px;">57.5%</td>
+            <td style="text-align:center !important;"><span style="color:#1e3a8a; font-weight:bold;">중립</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+0.09</td>
+        </tr>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">밀 (HRW)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>+5.17%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">61.7%</td>
+            <td style="text-align:right !important; padding-right:15px;">54.9%</td>
+            <td style="text-align:center !important;"><span style="color:#1e3a8a; font-weight:bold;">중립</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+3.07</td>
+        </tr>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">옥수수 (Corn)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>+15.50%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">53.3%</td>
+            <td style="text-align:right !important; padding-right:15px;">64.1%</td>
+            <td style="text-align:center !important;"><span style="color:#1e3a8a; font-weight:bold;">중립</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+5.74</td>
+        </tr>
+        <tr>
+            <td style="text-align:center !important; font-weight:bold;">콩 (Soybean)</td>
+            <td style="text-align:right !important; padding-right:15px;"><b>+17.77%</b></td>
+            <td style="text-align:right !important; padding-right:15px;">66.7%</td>
+            <td style="text-align:right !important; padding-right:15px;">78.1%</td>
+            <td style="text-align:center !important;"><span style="color:#dc2626; font-weight:bold;">과열</span></td>
+            <td style="text-align:right !important; padding-right:15px;">+2.36</td>
+        </tr>
+    </tbody>
+</table>
+"""
+st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
 # 5. 실시간 원문 헤드라인 및 구글 뉴스 검색 링크 엔진
@@ -454,26 +444,29 @@ with col_line1_right:
     
     def get_macro_row_html(label, col_key, prefix="", suffix="", is_currency=False):
         curr = clean_numeric(latest[col_key])
-        prev_mo = clean_numeric(prev_month_row[col_key])
+        prev_day = clean_numeric(prev_day_row[col_key])
+        prev_week = clean_numeric(prev_week_row[col_key])
         prev_yr = clean_numeric(prev_year_row[col_key])
         normal_val = get_trimmed_mean(df_5yr[col_key])
         
         curr_str = format_macro_val(curr, prefix, suffix, is_currency)
-        prev_mo_html = get_colored_chg_html(curr, prev_mo)
+        prev_day_html = get_colored_chg_html(curr, prev_day)
+        prev_week_html = get_colored_chg_html(curr, prev_week)
         prev_yr_html = get_colored_chg_html(curr, prev_yr)
         normal_html = get_colored_chg_html(curr, normal_val)
         
-        return f'<tr><td class="table-text-left">{label}</td><td>{curr_str}</td><td>{prev_mo_html}</td><td>{prev_yr_html}</td><td>{normal_html}</td></tr>'
+        return f'<tr><td class="table-text-left">{label}</td><td>{curr_str}</td><td>{prev_day_html}</td><td>{prev_week_html}</td><td>{prev_yr_html}</td><td>{normal_html}</td></tr>'
 
     macro_table_html = f"""
     <table class="dashboard-table">
         <thead>
             <tr>
-                <th style="width:28%;">주요 지표</th>
-                <th style="width:18%;">당일 추이</th>
-                <th style="width:18%;">전월 대비</th>
-                <th style="width:18%;">전년 대비</th>
-                <th style="width:18%;">평년 대비</th>
+                <th style="width:25%;">주요 지표</th>
+                <th style="width:15%;">당일 추이</th>
+                <th style="width:15%;">전일 대비</th>
+                <th style="width:15%;">전주 대비</th>
+                <th style="width:15%;">전년 대비</th>
+                <th style="width:15%;">평년 대비</th>
             </tr>
         </thead>
         <tbody>
