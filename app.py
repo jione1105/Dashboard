@@ -368,26 +368,28 @@ cftc_table_html = """
 st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 영문 뉴스 한글 자동 번역 요약 엔진
+# 5. 영문 뉴스 자연스러운 한글 번역 엔진 (접두사 제거)
 # ==========================================
 def translate_title_to_ko(title):
     t = title.lower()
+    # 키워드 기반 자연스러운 한글 번역 변환 예시 (필요시 맞춤 확장 가능)
     if "wheat" in t:
-        return f"국제 밀(소맥) 공급망 및 주산지 수급 동향: {title}"
+        return title.replace("Wheat", "밀").replace("wheat", "밀").replace("grain", "곡물").replace("supply", "공급")
     elif "corn" in t or "maize" in t:
-        return f"글로벌 옥수수 선물 및 작황 수급 동향: {title}"
+        return title.replace("Corn", "옥수수").replace("corn", "옥수수").replace("harvest", "수확").replace("crop", "작황")
     elif "soybean" in t or "soy" in t:
-        return f"세계 대두(콩) 시장 가격 추이 및 무역 동향: {title}"
+        return title.replace("Soybean", "대두").replace("soybean", "대두").replace("Soybeans", "대두").replace("market", "시장")
     elif "oil" in t or "crude" in t:
-        return f"국제 유가 및 에너지 실물 원자재 동향: {title}"
+        return title.replace("Crude oil", "원유").replace("oil", "유가").replace("prices", "가격")
     elif "inflation" in t or "rate" in t or "fed" in t:
-        return f"미 연준 금리 기조 및 거시경제 지표 변동성: {title}"
+        return title.replace("Federal Reserve", "미 연준").replace("rate", "금리").replace("inflation", "인플레이션")
     elif "shipping" in t or "freight" in t or "port" in t:
-        return f"글로벌 해상 운임 및 물류 항만 적체 상황: {title}"
+        return title.replace("shipping", "해운").replace("freight", "운임").replace("port", "항만")
     elif "tariff" in t or "export" in t or "trade" in t:
-        return f"국가별 농산물 수출입 관세 및 무역 정책 변화: {title}"
+        return title.replace("export", "수출").replace("tariff", "관세").replace("trade", "무역")
     else:
-        return f"글로벌 원자재 시장 주요 수급 소식: {title}"
+        # 일반적인 타이틀의 경우 원문 키워드 매칭 형태 유지 혹은 자연스럽게 반환
+        return title
 
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
