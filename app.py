@@ -578,7 +578,7 @@ with col_line2_left:
             
             fig_fao.update_layout(margin=dict(l=10, r=10, t=15, b=10), height=260, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), template="plotly_white")
             st.plotly_chart(fig_fao, use_container_width=True)
-        exceptException as fao_err:
+        except Exception as fao_err:
             st.error(f"FAO 지수 필터 가공 에러: {fao_err}")
 
 with col_line2_right:
