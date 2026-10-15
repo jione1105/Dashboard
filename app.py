@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from urllib.parse import quote
 import yfinance as yf
@@ -119,11 +118,7 @@ def fetch_market_data():
 def fetch_fao_data():
     """업로드된 FAO 공식 CSV 파일('food_price_indices_data.csv')을 정확히 파싱합니다."""
     try:
-        # skiprows=1을 통해 첫 줄 메타데이터 건너뛰고 컬럼명 지정
-        df_fao = pd.read_csv('food_price_indices_data.csv', skiprows=1)
-        
-        # 실제 컬럼명 구조: Date, Food Price Index, Meat, Dairy, Cereals, Oils, Sugar
-        # 대시보드 맞춤 컬럼명으로 리네이밍
+        df_fao = pd.read_csv('food_price_indices_data.csv', skiprows=2)
         rename_map = {
             'Date': '날짜',
             'Food Price Index': '식품가격지수',
@@ -134,11 +129,9 @@ def fetch_fao_data():
             'Sugar': '설탕'
         }
         df_fao = df_fao.rename(columns=rename_map)
-        
         if '날짜' in df_fao.columns:
             df_fao['날짜'] = pd.to_datetime(df_fao['날짜'], errors='coerce')
             df_fao = df_fao.dropna(subset=['날짜'])
-            
         return df_fao
     except Exception as e:
         dates = pd.date_range(start=datetime.now() - timedelta(days=365*3), end=datetime.now(), freq='MS')
@@ -232,7 +225,7 @@ def format_macro_val(val, prefix="", suffix="", is_currency=False):
     except: return f"{val}"
 
 # ==========================================
-# 3. 주요 곡물 선물가격 일일 시황 영역
+# 3. 주요 곡물 선물가격 일일 시황 영역 (품목별 고유 변동 반영)
 # ==========================================
 st.markdown(f'<div class="section-title">■ 주요 곡물 선물가격 일일 시황({header_date_style})</div>', unsafe_allow_html=True)
 
@@ -254,10 +247,17 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     day_diff_pct = (day_diff / prev_day_val) * 100 if prev_day_val else 0
     dir_str = "상승" if day_diff > 0 else ("하락" if day_diff < 0 else "보합")
     
+    # 품목별 맞춤형 전일 대비 변동 시황 텍스트 생성
+    if item_ko.startswith("밀"):
+        factor_desc = "흑해 항로 수출입 물류 불확실성 및 북미 주산지 기후 여파에 따른 공급 차질 우려"
+    elif item_ko.startswith("옥수수"):
+        factor_desc = "주산지 수확기 진입에 따른 물량 유동성 확대와 사료업계의 수급 관망세"
+    else:
+        factor_desc = "남미 신곡 출하 압박과 글로벌 대두박 수요 변동성"
+
     driver_text = (
         f"당일 {item_ko} 선물 가격은 전일 대비 {abs(day_diff):.2f} 달러/톤 ({day_diff_pct:+.1f}%) {dir_str}한 "
-        f"{curr_val:.2f} 달러/톤을 기록하였습니다. 전일 가격 변동을 유발한 주요 요인으로 흑해 물류 유동성 및 "
-        f"주요 산지별 수출입 수급 동향이 반영되었습니다."
+        f"{curr_val:.2f} 달러/톤을 기록하였습니다. 금일 가격 변동을 주도한 주요 요인으로는 {factor_desc} 등이 복합적으로 작용하였습니다."
     )
 
     st.markdown(f"""
