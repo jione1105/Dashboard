@@ -115,12 +115,30 @@ def fetch_market_data():
     df_macro = df_macro.rename(columns=rename_cols)
     return df_macro
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=5)
 def fetch_fao_data():
+    """업로드된 FAO 공식 CSV 파일('food_price_indices_data.csv')을 정확히 파싱합니다."""
     try:
-        df_fao = pd.read_csv('food_price_indices_data.csv')
+        # skiprows=1을 통해 첫 줄 메타데이터 건너뛰고 컬럼명 지정
+        df_fao = pd.read_csv('food_price_indices_data.csv', skiprows=1)
+        
+        # 실제 컬럼명 구조: Date, Food Price Index, Meat, Dairy, Cereals, Oils, Sugar
+        # 대시보드 맞춤 컬럼명으로 리네이밍
+        rename_map = {
+            'Date': '날짜',
+            'Food Price Index': '식품가격지수',
+            'Cereals': '곡물',
+            'Oils': '유지류',
+            'Meat': '축산물',
+            'Dairy': '유제품',
+            'Sugar': '설탕'
+        }
+        df_fao = df_fao.rename(columns=rename_map)
+        
         if '날짜' in df_fao.columns:
-            df_fao['날짜'] = pd.to_datetime(df_fao['날짜'])
+            df_fao['날짜'] = pd.to_datetime(df_fao['날짜'], errors='coerce')
+            df_fao = df_fao.dropna(subset=['날짜'])
+            
         return df_fao
     except Exception as e:
         dates = pd.date_range(start=datetime.now() - timedelta(days=365*3), end=datetime.now(), freq='MS')
@@ -232,12 +250,15 @@ def render_grain_briefing_card(item_ko, col_name, border_color):
     prev_yr_chg_html = get_colored_chg_html(curr_val, prev_yr_val)
     normal_chg_html = get_colored_chg_html(curr_val, normal_val)
     
-    if item_ko.startswith("밀"):
-        driver_text = f"당일 밀 선물 가격은 {curr_val:.2f} 달러/톤을 기록한 가운데, 흑해 지역 지정학적 공급망 긴장 및 북미 주요 수출국의 작황 불확실성이 복합적으로 작용하여 가격 상방 압력을 형성하고 있습니다."
-    elif item_ko.startswith("옥수수"):
-        driver_text = f"당일 옥수수 선물 가격은 {curr_val:.2f} 달러/톤을 기록한 가운데, 주산지 수확기 기상 여건 호조에 따른 물량 유동성 확대와 사료업계의 수급 관망세가 맞물리며 가격 등락 폭이 조절되고 있습니다."
-    else:
-        driver_text = f"당일 콩 선물 가격은 {curr_val:.2f} 달러/톤을 기록한 가운데, 남미 신곡 출하 압박과 글로벌 대두박 수요 둔화 우려가 반영되면서 전반적인 가격 변동성이 제한되는 양상을 보이고 있습니다."
+    day_diff = curr_val - prev_day_val
+    day_diff_pct = (day_diff / prev_day_val) * 100 if prev_day_val else 0
+    dir_str = "상승" if day_diff > 0 else ("하락" if day_diff < 0 else "보합")
+    
+    driver_text = (
+        f"당일 {item_ko} 선물 가격은 전일 대비 {abs(day_diff):.2f} 달러/톤 ({day_diff_pct:+.1f}%) {dir_str}한 "
+        f"{curr_val:.2f} 달러/톤을 기록하였습니다. 전일 가격 변동을 유발한 주요 요인으로 흑해 물류 유동성 및 "
+        f"주요 산지별 수출입 수급 동향이 반영되었습니다."
+    )
 
     st.markdown(f"""
     <div class="reason-section-box" style="border-top: 4px solid {border_color};">
@@ -284,7 +305,7 @@ with tab_soybean:
     render_grain_briefing_card("콩 (Soybean)", "콩_달러톤", "#b45309")
 
 # ==========================================
-# 4. 선물시장 진단 (정렬 요구사항 반영)
+# 4. 선물시장 진단
 # ==========================================
 st.markdown(f'<div class="section-title">📈 선물시장 진단 (CFTC 포지션 분석)({header_date_style})</div>', unsafe_allow_html=True)
 
@@ -488,9 +509,9 @@ st.markdown("<br>", unsafe_allow_html=True)
 col_line2_left, col_line2_right = st.columns([3, 2])
 
 with col_line2_left:
-    st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이 (월별 공식 발표 반영)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📊 FAO 식품가격지수 추이 (업로드 파일 연동)</div>', unsafe_allow_html=True)
     if df_fao_raw.empty or len(df_fao_raw) < 1:
-        st.info("💡 FAO 식품가격지수 데이터를 파싱하는 데 실패했습니다.")
+        st.info("💡 업로드된 FAO CSV 파일을 찾을 수 없습니다.")
     else:
         try:
             df_fao_base = df_fao_raw.sort_values(by='날짜').copy()
