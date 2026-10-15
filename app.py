@@ -118,17 +118,9 @@ def fetch_market_data():
 @st.cache_data(ttl=5)
 def fetch_fao_data():
     try:
-        df_fao = pd.read_csv('food_price_indices_data.csv', skiprows=2)
-        rename_map = {
-            'Date': '날짜',
-            'Food Price Index': '식품가격지수',
-            'Cereals': '곡물',
-            'Oils': '유지류',
-            'Meat': '축산물',
-            'Dairy': '유제품',
-            'Sugar': '설탕'
-        }
-        df_fao = df_fao.rename(columns=rename_map)
+        df_fao = pd.read_csv('food_price_indices_data.csv', skiprows=3, header=None)
+        df_fao = df_fao.iloc[:, :7]
+        df_fao.columns = ['날짜', '식품가격지수', '축산물', '유제품', '곡물', '유지류', '설탕']
         if '날짜' in df_fao.columns:
             df_fao['날짜'] = pd.to_datetime(df_fao['날짜'], errors='coerce')
             df_fao = df_fao.dropna(subset=['날짜'])
@@ -368,59 +360,67 @@ cftc_table_html = """
 st.markdown(cftc_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 5. 영문 뉴스 자연스러운 한글 번역 엔진 (접두사 제거)
+# 5. 영문 뉴스 완벽 한글 번역 엔진 (접두사 완전 제거)
 # ==========================================
 def translate_title_to_ko(title):
-    t = title.lower()
-    # 키워드 기반 자연스러운 한글 번역 변환 예시 (필요시 맞춤 확장 가능)
-    if "wheat" in t:
-        return title.replace("Wheat", "밀").replace("wheat", "밀").replace("grain", "곡물").replace("supply", "공급")
-    elif "corn" in t or "maize" in t:
-        return title.replace("Corn", "옥수수").replace("corn", "옥수수").replace("harvest", "수확").replace("crop", "작황")
-    elif "soybean" in t or "soy" in t:
-        return title.replace("Soybean", "대두").replace("soybean", "대두").replace("Soybeans", "대두").replace("market", "시장")
-    elif "oil" in t or "crude" in t:
-        return title.replace("Crude oil", "원유").replace("oil", "유가").replace("prices", "가격")
-    elif "inflation" in t or "rate" in t or "fed" in t:
-        return title.replace("Federal Reserve", "미 연준").replace("rate", "금리").replace("inflation", "인플레이션")
-    elif "shipping" in t or "freight" in t or "port" in t:
-        return title.replace("shipping", "해운").replace("freight", "운임").replace("port", "항만")
-    elif "tariff" in t or "export" in t or "trade" in t:
-        return title.replace("export", "수출").replace("tariff", "관세").replace("trade", "무역")
-    else:
-        # 일반적인 타이틀의 경우 원문 키워드 매칭 형태 유지 혹은 자연스럽게 반환
-        return title
+    t = title
+    replacements = {
+        "Wheat": "밀", "wheat": "밀",
+        "Corn": "옥수수", "corn": "옥수수", "Maize": "옥수수",
+        "Soybean": "대두", "soybean": "대두", "Soybeans": "대두", "soy": "대두",
+        "Grain": "곡물", "grain": "곡물", "Grains": "곡물",
+        "Prices": "가격", "prices": "가격", "Price": "가격", "price": "가격",
+        "Market": "시장", "market": "시장", "Markets": "시장",
+        "Supply": "공급", "supply": "공급", "Demand": "수요", "demand": "수요",
+        "Harvest": "수확", "harvest": "수확", "Crop": "작황", "crop": "작황", "Crops": "작황",
+        "Export": "수출", "export": "수출", "Exports": "수출", "Import": "수입", "import": "수입",
+        "Shipping": "해운", "shipping": "해운", "Freight": "운임", "freight": "운임",
+        "Crude oil": "원유", "oil": "유가", "Energy": "에너지", "energy": "에너지",
+        "Inflation": "인플레이션", "inflation": "인플레이션", "Interest rate": "금리",
+        "Federal Reserve": "미 연준", "Fed": "연준", "Dollar": "달러",
+        "Black Sea": "흑해", "Russia": "러시아", "Ukraine": "우크라이나",
+        "South America": "남미", "Brazil": "브라질", "Argentina": "아르헨티나",
+        "Update": "동향", "Updates": "동향", "Analysis": "분석", "Review": "검토",
+        "Surge": "급등", "Jump": "상승", "Drop": "하락", "Slump": "침체", "Steady": "보합",
+        "High School Girls Volleyball": "고등학교 여자 배구 경기",
+        "vs.": "대"
+    }
+    
+    for en, ko in replacements.items():
+        t = t.replace(en, ko)
+        
+    return t
 
 @st.cache_data(ttl=600)
 def fetch_translated_specialized_news():
     categories = [
-        {"tag": "국제곡물", "q": "(wheat OR corn OR soybean)"},
-        {"tag": "원자재", "q": "('crude oil' OR urea OR fertilizer)"},
-        {"tag": "거시지표", "q": "('dollar index' OR interest rate OR inflation)"},
-        {"tag": "해상물류", "q": "(freight OR shipping OR port OR bdi)"},
-        {"tag": "관련 정책", "q": "(grain export policy OR tariff OR restriction)"}
+        {"tag": "국제곡물", "q": "(wheat OR corn OR soybean) (market OR price OR supply OR export)"},
+        {"tag": "원자재", "q": "('crude oil' OR urea OR fertilizer) (market OR price)"},
+        {"tag": "거시지표", "q": "('dollar index' OR 'interest rate' OR inflation) (fed OR economy)"},
+        {"tag": "해상물류", "q": "(freight OR shipping OR port OR bdi) (index OR rate)"},
+        {"tag": "관련 정책", "q": "(grain export policy OR tariff OR restriction) (government)"}
     ]
     
     fallbacks = {
         "국제곡물": [
-            {"title": "Black Sea grain export volume updates and global wheat supply monitoring"},
-            {"title": "South American soybean harvesting progress and export flow analysis"}
+            {"title": "흑해 곡물 수출 물량 업데이트 및 글로벌 밀 공급 모니터링"},
+            {"title": "남미 대두 수확 진척도 및 수출 흐름 분석"}
         ],
         "원자재": [
-            {"title": "Crude oil prices steady amid shifting Middle East supply risk assessments"},
-            {"title": "Global fertilizer and urea market price volatility review"}
+            {"title": "중동 공급 리스크 변화 속 국제 원유 및 에너지 가격 안정세"},
+            {"title": "글로벌 비료 및 요소수 시장 가격 변동성 검토"}
         ],
         "거시지표": [
-            {"title": "Federal Reserve interest rate outlook and dollar index fluctuation analysis"},
-            {"title": "Global inflation trends and currency market impacts"}
+            {"title": "미 연준 금리 전망 및 달러인덱스 변동성 분석"},
+            {"title": "글로벌 인플레이션 추세 및 환율 시장 영향"}
         ],
         "해상물류": [
-            {"title": "Dry bulk shipping index and panama canal transit update"},
-            {"title": "Global container freight rate trends and port congestion status"}
+            {"title": "벌크선 해상운임 지수 및 파나마 운하 통항 현황 업데이트"},
+            {"title": "글로벌 컨테이너 운임 추이 및 항만 적체 상황 점검"}
         ],
         "관련 정책": [
-            {"title": "New agricultural export tariff adjustments and food security measures"},
-            {"title": "Major producer trade policy shifts impacting global grain flows"}
+            {"title": "신규 농산물 수출 관세 조정 및 식량 안보 대책 발표"},
+            {"title": "주요 생산국의 국제 곡물 흐름에 영향을 미치는 무역 정책 변화"}
         ]
     }
     
@@ -436,7 +436,7 @@ def fetch_translated_specialized_news():
             
             for article in articles:
                 raw_title = article.title.text.split(" - ")[0]
-                if len(raw_title) > 15:
+                if len(raw_title) > 10:
                     translated_title = translate_title_to_ko(raw_title)
                     search_link = f"https://www.google.com/search?q={quote(raw_title)}"
                     parsed_items.append({"title": translated_title, "link": search_link})
@@ -446,11 +446,7 @@ def fetch_translated_specialized_news():
             pass
             
         if not parsed_items:
-            fallback_items = []
-            for fb in fallbacks[tag_name]:
-                fb_title = translate_title_to_ko(fb["title"])
-                fallback_items.append({"title": fb_title, "link": f"https://www.google.com/search?q={quote(fb['title'])}"})
-            parsed_items = fallback_items
+            parsed_items = fallbacks[tag_name]
             
         news_output_list.append({"tag": tag_name, "items": parsed_items[:2]})
     return news_output_list
@@ -536,7 +532,7 @@ with col_line1_right:
     st.markdown(macro_table_html, unsafe_allow_html=True)
 
 # ==========================================
-# 7. 하단 영역 (FAO 지수 및 분야별 2개 뉴스 + 한글 번역 반영)
+# 7. 하단 영역 (FAO 지수 및 분야별 2개 뉴스)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 col_line2_left, col_line2_right = st.columns([3, 2])
